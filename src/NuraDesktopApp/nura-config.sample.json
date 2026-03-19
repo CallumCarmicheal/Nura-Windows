@@ -1,0 +1,13 @@
+{
+  "deviceAddress": "AA:BB:CC:DD:EE:FF", // Bluetooth HWID / Mac Address.
+  "serialNumber": 12345678, // Serial number for the nuraphones.
+
+  // Profile index
+  "currentProfileId": 0,
+
+  // The device key.
+  "deviceKeyHex": "0123456789abcdef0123456789abcdef",
+
+  // This is the nonce generated from the app logs
+  "sessionNonceHex": "0123456789abcdef01234567"
+}
