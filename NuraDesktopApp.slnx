@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/NuraDesktopApp/NuraDesktopApp.csproj" />
+    <Project Path="src/NuraLib/NuraLib.csproj" />
+    <Project Path="src/NuraDesktopApp/NuraDesktopConsole.csproj" />
   </Folder>
 </Solution>

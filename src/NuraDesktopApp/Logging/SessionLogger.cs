@@ -1,4 +1,4 @@
-namespace desktop_app.Logging;
+namespace NuraDesktopConsole.Logging;
 
 internal sealed class SessionLogger : IDisposable {
     private readonly StreamWriter _writer;

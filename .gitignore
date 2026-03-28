@@ -1,6 +1,8 @@
 .appdata/
+.git.old/
 .dotnet_home/
 .tmp_test/
+.dotnet/
 bin/
 obj/
 src/*/bin/
@@ -438,3 +440,5 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+README.md

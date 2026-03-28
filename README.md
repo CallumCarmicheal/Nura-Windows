@@ -1,54 +1,101 @@
-# NuraDesktopApp
+# Nura Desktop App
 
-`NuraDesktopApp` is a Windows `.NET 8` console application for talking to Nuraphone over-ear headphones directly over RFCOMM/SPP.
+This folder contains two related .NET projects:
 
-Current scope:
+- `NuraDesktopConsole`
+  - the Windows reverse-engineering and validation harness
+- `NuraLib`
+  - the reusable library being written for use with a graphical interface later or for use with other applications.
 
-- authenticate against the Nuraphone backend using the email + code flow
-- perform the local app-crypto handshake from Windows
-- read headset state after handshake
-- run targeted protocol tests such as ANC mode toggling
-- write detailed per-session logs to `logs/`
+The practical goal is to recreate enough of the Nura app for Windows use:
 
-This folder is intentionally self-contained. It does not depend on the wider reverse-engineering workspace to build or run.
+- recover the Bluetooth and crypto behavior used by the official app
+- automate the backend-assisted bootstrap while the API still exists
+- recover and persist the long-lived per-device key
+- use that key for ongoing local encrypted control without depending on the official app
 
-## Status
+## Current State
+
+### NuraDesktopConsole
 
 Implemented and working:
 
-- Windows RFCOMM/SPP connection to the headset
-- GAIA packet framing
-- app challenge / validate handshake
-- authenticated encrypted reads
-- fresh random session nonce generation
-- email login flow against the Nuraphone backend
-- ANC mode read / toggle / restore test
+- Windows RFCOMM/SPP connection to Nuraphone over-ears
+- GAIA packet framing and parsing
+- backend auth flow with:
+  - `app/session`
+  - `auth/validate_token`
+  - email + code login fallback
+- full backend bootstrap chain through:
+  - `session/start`
+  - `session/start_1`
+  - `session/start_2`
+  - `session/start_3`
+  - `session/start_4`
+- recovery of:
+  - `asid`
+  - `usid`
+  - persistent device key via `app_enc.key`
+- local encrypted control once the device key is known
+- safe ANC toggle / restore test
 
-Current known-safe command coverage:
+Confirmed important result:
 
-- read deep sleep timeout
-- read current profile
-- read battery state
-- read ANC state
-- toggle ANC / passthrough and restore the original state
+- `session/start_4` returns `app_enc.key`
+- that key is the same long-lived persistent per-device key used for later offline/local control
 
-## Requirements
+### NuraLib
 
-- Windows with Bluetooth support
-- paired Nuraphone headset
-- .NET 8 SDK
+Implemented so far:
+
+- config/auth/device models
+- session crypto/runtime helpers
+- generic device model with:
+  - `DeviceType`
+  - capability rules
+  - cached device state
+  - cached device configuration
+  - cached profile state
+- device-owned change events
+- development-only `[BluetoothImplementationRequired]` markers on Bluetooth-facing stubs
+
+Current limitation:
+
+- most Bluetooth-facing `NuraLib` operations are still scaffolded and intentionally throw `NotImplementedException`
+- the real transport and command implementations still live in `NuraDesktopConsole`
 
 ## Repository Layout
 
-- [src/NuraDesktopApp](/src/NuraDesktopApp): application source
-- [NuraDesktopApp.slnx](/NuraDesktopApp.slnx): solution file
-- [NuGet.Config](/NuGet.Config): local NuGet config
-- [src/NuraDesktopApp/nura-config.sample.json](/src/NuraDesktopApp/nura-config.sample.json): sample headset config
-- [logs](/logs): session logs written by the app
-- [nura-config.json](/nura-config.json): local headset config, not committed
-- [nura-auth.json](/nura-auth.json): local auth state, not committed
+- `src/NuraDesktopApp`
+  - `NuraDesktopConsole` source
+- `src/NuraLib`
+  - reusable library source
+- `NuraDesktopApp.slnx`
+  - solution file
+- `NuGet.Config`
+  - local NuGet config
+- `logs`
+  - session logs written by `NuraDesktopConsole`
+- `nura-config.json`
+  - local device config, not committed
+- `nura-auth.json`
+  - local auth/bootstrap state, not committed
 
 ## Build
+
+Build the console app:
+
+```powershell
+dotnet build .\src\NuraDesktopApp\NuraDesktopConsole.csproj -v minimal
+```
+
+Build the library:
+
+```powershell
+dotnet build .\src\NuraLib\NuraLib.csproj -v minimal
+```
+
+Build both through the solution wrapper:
 
 ```powershell
 dotnet build .\NuraDesktopApp.slnx --configfile .\NuGet.Config
@@ -62,13 +109,19 @@ $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE='1'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT='1'
 $env:NUGET_PACKAGES="$PWD\.nuget\packages"
 $env:APPDATA="$PWD\.appdata"
-
-dotnet build .\NuraDesktopApp.slnx --configfile .\NuGet.Config
 ```
 
 ## Configuration
 
-Create [nura-config.json](/nura-config.json) in the root. Start from [src/NuraDesktopApp/nura-config.sample.json](/src/NuraDesktopApp/nura-config.sample.json).
+### `nura-config.json`
+
+This stores durable local device information.
+
+Older console flows used this more directly. The long-term direction is:
+
+- store durable device information here
+- especially the persistent per-device key
+- do not treat bootstrap session state as durable config
 
 Example:
 
@@ -84,124 +137,120 @@ Example:
 
 Notes:
 
-- `deviceKeyHex` is the persistent per-headset app key.
-- `sessionNonceHex` is used by the fixed-nonce handshake commands.
-- `tests/fresh-nonce-test` ignores `sessionNonceHex` and generates a fresh random 12-byte nonce locally.
+- `deviceKeyHex` is the persistent per-headset key
+- long-term local control depends on this key, not on a backend-provided session nonce
+- a fresh nonce can be generated locally when opening a new encrypted local session
 
-## Logging
+### `nura-auth.json`
 
-Every run creates a timestamped log file in [logs](/logs).
+This stores auth and bootstrap state used by the console harness.
 
-The console output also prints:
+It can contain things like:
 
-- `command.name=...`
-- `log.path=...`
-- `config.path=...` or `auth.path=...`
+- auth headers
+- `asid`
+- `usid`
+- active backend bootstrap state
+- recovered `app_enc.key` and `app_enc.nonce`
 
-Treat log files as sensitive. They may contain:
+For `NuraLib`, this file is not the intended final public config model. It is primarily part of the current test harness workflow.
 
-- headset identifiers
-- app keys
-- access tokens
-- email addresses
-
-## Commands
+## NuraDesktopConsole Commands
 
 Run commands with:
 
 ```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- <command>
+dotnet run --project .\src\NuraDesktopApp\NuraDesktopConsole.csproj -- <command> [subcommand]
 ```
 
-### Offline / Protocol Commands
+### Main Command Groups
 
-Show the offline bootstrap plan:
+- `probe ...`
+  - connected-device discovery and unencrypted hardware info
+- `protocol ...`
+  - packet and crypto helpers
+- `headset ...`
+  - live headset tests and local-control validation
+- `auth ...`
+  - backend auth and bootstrap helpers
+- `flow ...`
+  - higher-level chained workflows
+
+### Common Commands
+
+List connected Nuraphone devices:
 
 ```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- tests/plan
+dotnet run --project .\src\NuraDesktopApp\NuraDesktopConsole.csproj -- probe devices
 ```
 
-Build a challenge response from a known headset challenge:
+Read unencrypted serial / firmware metadata:
 
 ```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- data/respond --challenge-hex 00112233445566778899aabbccddeeff
+dotnet run --project .\src\NuraDesktopApp\NuraDesktopConsole.csproj -- probe hw-info
 ```
 
-Encrypt a plaintext payload into an app packet:
+Run the fresh startup/bootstrap flow to `session/start_3`:
 
 ```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- data/encrypt --payload-hex 0041
+dotnet run --project .\src\NuraDesktopApp\NuraDesktopConsole.csproj -- flow init-to-start3
 ```
 
-Parse a GAIA frame:
+Continue the backend bootstrap:
 
 ```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- data/parse --frame-hex ff01000068000000
+dotnet run --project .\src\NuraDesktopApp\NuraDesktopConsole.csproj -- auth session-start-next
 ```
 
-### Live Headset Commands
-
-Connect, handshake, and perform safe authenticated reads:
+Run the ANC toggle validation:
 
 ```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- tests/live-handshake
+dotnet run --project .\src\NuraDesktopApp\NuraDesktopConsole.csproj -- headset anc-toggle-test
 ```
 
-Connect using a fresh random nonce and perform safe authenticated reads:
+## Logging
 
-```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- tests/fresh-nonce-test
-```
+Every `NuraDesktopConsole` run creates a timestamped log file in `logs`.
 
-Read current ANC mode, toggle it, wait 5 seconds, and restore the original state:
+Treat log files as sensitive. They may contain:
 
-```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- tests/anc-toggle-test
-```
-
-### Backend Auth Commands
-
-Send the email login code:
-
-```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- auth send-email --email you@example.com
-```
-
-Verify the six-digit code:
-
-```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- auth verify-code --email you@example.com --code 123456
-```
-
-Validate the stored auth token:
-
-```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- auth validate-token
-```
-
-Show the currently stored auth state:
-
-```powershell
-dotnet run --project .\src\NuraDesktopApp\NuraDesktopApp.csproj -- auth show-state
-```
+- headset identifiers
+- device keys
+- access tokens
+- email addresses
+- user and app session identifiers
 
 ## Safety
 
-The implemented live commands are intentionally narrow. Do not add or run unknown setters against live hardware casually.
+The console app is intentionally a reverse-engineering harness, not yet a polished end-user controller.
 
-Current recommendation:
+Use caution with:
 
-- start with `tests/live-handshake`
-- use `tests/fresh-nonce-test` to confirm local bootstrap
-- use `tests/anc-toggle-test` only after reads are working
+- unknown setters
+- firmware-related commands
+- unexplored command families
+- anything that writes to the headset outside currently understood control flows
 
-Avoid using this tool for:
+Current safe starting points:
 
-- firmware or upgrade commands
-- unknown debug commands
-- pairing database manipulation
-- fuzzing unexplored command families
+- `probe devices`
+- `probe hw-info`
+- `flow init-to-start3`
+- `headset anc-toggle-test`
+
+## Direction
+
+Short-term:
+
+- keep `NuraDesktopConsole` as the experimentation and packet-analysis harness
+- continue porting stable pieces into `NuraLib`
+
+Long-term:
+
+- use `NuraLib` as the public Windows integration surface
+- keep backend use limited to one-time bootstrap or recovery while the API still exists
+- rely on the recovered persistent device key for normal ongoing local control
 
 ## License
 
-Licensed under Apache License 2.0. See [LICENSE.md](/LICENSE.md) and [NOTICE](/NOTICE).
+Licensed under Apache License 2.0. See [LICENSE.md](./LICENSE.md) and [NOTICE](./NOTICE).
