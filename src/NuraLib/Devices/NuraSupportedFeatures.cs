@@ -1,0 +1,37 @@
+namespace NuraLib.Devices;
+
+[Flags]
+public enum NuraSupportedFeatures {
+    None = 0,
+    DeviceInfo = 1 << 0,
+    Profiles = 1 << 1,
+    Anc = 1 << 2,
+    TouchButtons = 1 << 3,
+    Dial = 1 << 4,
+    Immersion = 1 << 5,
+    Spatial = 1 << 6,
+    KickIt = 1 << 7,
+    DoubleTap = 1 << 8,
+    TripleTap = 1 << 9,
+    BulkCommands = 1 << 10,
+    UserId = 1 << 11,
+    VisualisationData = 1 << 12,
+    MspFirmwareVersion = 1 << 13,
+    InsertionDataV2 = 1 << 14,
+    ButtonPlayPauseAnswer = 1 << 15,
+    ButtonVoiceAssistant = 1 << 16,
+    ButtonVolumeUpDown = 1 << 17,
+    ButtonPrevNextTrack = 1 << 18,
+    ButtonToggleSocial = 1 << 19,
+    ButtonKickItUpDown = 1 << 20,
+    GlobalAncToggle = 1 << 21,
+    AncLevel = 1 << 22,
+    HeadDetection = 1 << 23,
+    ManualHeadDetection = 1 << 24,
+    Multipoint = 1 << 25,
+    VoicePromptGain = 1 << 26,
+    PersonalisedMode = 1 << 27,
+    ProEq = 1 << 28,
+    EuAttenuation = 1 << 29,
+    AnalogDigitalEuAttenuation = 1 << 30
+}

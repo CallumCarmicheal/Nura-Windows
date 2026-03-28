@@ -1,6 +1,8 @@
+using NuraDesktopConsole.Library;
+
 using System.Text.Json;
 
-namespace desktop_app.Config;
+namespace NuraDesktopConsole.Config;
 
 internal sealed class NuraOfflineConfig {
     public required string DeviceAddress { get; init; }
