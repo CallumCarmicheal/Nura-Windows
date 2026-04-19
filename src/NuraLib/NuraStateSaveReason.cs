@@ -1,6 +1,9 @@
 namespace NuraLib;
 
 [Flags]
+/// <summary>
+/// Describes why the library is requesting that its state be persisted by the host application.
+/// </summary>
 public enum NuraStateSaveReason {
     None = 0,
     Configuration = 1 << 0,

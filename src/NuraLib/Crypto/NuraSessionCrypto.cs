@@ -5,6 +5,9 @@ using NuraLib.Utilities;
 
 namespace NuraLib.Crypto;
 
+/// <summary>
+/// Implements the local Nura session crypto used for challenge/response, CTR payload encryption, and authenticated packets.
+/// </summary>
 public sealed class NuraSessionCrypto {
     private static readonly byte[] ValidatePhrase = Encoding.ASCII.GetBytes("Kyle is awesome!");
     private static readonly UInt128 GHashReductionPolynomial = (UInt128)0xe100000000000000UL << 64;
@@ -13,6 +16,13 @@ public sealed class NuraSessionCrypto {
     private readonly byte[] _decryptCounterBlock;
     private readonly byte[] _hashSubkey;
 
+    /// <summary>
+    /// Creates a new session crypto context.
+    /// </summary>
+    /// <param name="key">The 16-byte persistent device key.</param>
+    /// <param name="nonce">The 12-byte session nonce.</param>
+    /// <param name="encryptCounter">The starting encrypt counter.</param>
+    /// <param name="decryptCounter">The starting decrypt counter.</param>
     public NuraSessionCrypto(byte[] key, byte[] nonce, uint encryptCounter, uint decryptCounter) {
         if (key.Length != 16) {
             throw new InvalidOperationException("AES key must be 16 bytes");
@@ -28,10 +38,21 @@ public sealed class NuraSessionCrypto {
         _hashSubkey = EncryptBlock(new byte[16]);
     }
 
+    /// <summary>
+    /// Gets the current encrypt counter value.
+    /// </summary>
     public uint EncryptCounter => ReadCounter(_encryptCounterBlock);
 
+    /// <summary>
+    /// Gets the current decrypt counter value.
+    /// </summary>
     public uint DecryptCounter => ReadCounter(_decryptCounterBlock);
 
+    /// <summary>
+    /// Generates a GMAC challenge response for the provided 16-byte challenge.
+    /// </summary>
+    /// <param name="challenge">The 16-byte challenge issued by the device.</param>
+    /// <returns>The 16-byte response GMAC.</returns>
     public byte[] GenerateChallengeResponse(byte[] challenge) {
         if (challenge.Length != 16) {
             throw new InvalidOperationException("challenge must be 16 bytes");
@@ -40,6 +61,11 @@ public sealed class NuraSessionCrypto {
         return ComputeGmac(_encryptCounterBlock, challenge);
     }
 
+    /// <summary>
+    /// Validates a device response GMAC against the expected fixed validation phrase.
+    /// </summary>
+    /// <param name="responseGmac">The 16-byte response GMAC returned by the device.</param>
+    /// <returns><see langword="true"/> when the response validates; otherwise, <see langword="false"/>.</returns>
     public bool ValidateResponse(byte[] responseGmac) {
         if (responseGmac.Length != 16) {
             return false;
@@ -49,15 +75,28 @@ public sealed class NuraSessionCrypto {
         return CryptographicOperations.FixedTimeEquals(expected, responseGmac);
     }
 
+    /// <summary>
+    /// Encrypts an authenticated payload and prepends the authentication tag.
+    /// </summary>
+    /// <param name="payload">The plaintext payload.</param>
+    /// <returns>The authentication tag followed by ciphertext.</returns>
     public byte[] EncryptAuthenticated(byte[] payload) {
         var (tag, crypt) = EncryptAuthenticatedInternal(_encryptCounterBlock, payload);
         return ByteArrays.Combine(tag, crypt);
     }
 
+    /// <summary>
+    /// Encrypts an unauthenticated payload using the current session counters.
+    /// </summary>
     public byte[] EncryptUnauthenticated(byte[] payload) {
         return ApplyCtr(payload, _encryptCounterBlock);
     }
 
+    /// <summary>
+    /// Decrypts and validates an authenticated payload.
+    /// </summary>
+    /// <param name="payload">The received authentication tag followed by ciphertext.</param>
+    /// <returns>The decrypted plaintext payload.</returns>
     public byte[] DecryptAuthenticated(byte[] payload) {
         if (payload.Length < 16) {
             throw new InvalidOperationException("authenticated payload must contain a 16-byte tag");
@@ -68,6 +107,9 @@ public sealed class NuraSessionCrypto {
         return DecryptAuthenticatedInternal(_decryptCounterBlock, cipherText, tag);
     }
 
+    /// <summary>
+    /// Decrypts an unauthenticated payload using the current session counters.
+    /// </summary>
     public byte[] DecryptUnauthenticated(byte[] payload) {
         return ApplyCtr(payload, _decryptCounterBlock);
     }

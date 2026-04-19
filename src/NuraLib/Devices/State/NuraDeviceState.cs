@@ -1,10 +1,12 @@
 namespace NuraLib.Devices;
 
+/// <summary>
+/// Holds the last known live state values for a connected device.
+/// </summary>
 public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
     private NuraAncState? _anc;
     private int? _ancLevel;
     private bool? _globalAncEnabled;
-    private bool? _combinedAncEnabled;
     private bool? _spatialEnabled;
     private bool? _immersionEnabled;
     private int? _immersionLevel;
@@ -12,13 +14,27 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
     private bool? _proEqEnabled;
     private NuraProEq? _proEq;
 
+    /// <summary>
+    /// Raised when the cached ANC state changes.
+    /// </summary>
     public event EventHandler<NuraValueChangedEventArgs<NuraAncState>>? AncChanged;
 
+    /// <summary>
+    /// Raised when the cached ANC level changes.
+    /// </summary>
     public event EventHandler<NuraValueChangedEventArgs<int?>>? AncLevelChanged;
 
-    public event EventHandler<NuraValueChangedEventArgs<bool?>>? GlobalAncEnabledChanged;
+    /// <summary>
+    /// Raised when the cached ANC enabled value changes.
+    /// </summary>
+    public event EventHandler<NuraValueChangedEventArgs<bool?>>? AncEnabledChanged;
 
-    public event EventHandler<NuraValueChangedEventArgs<bool?>>? CombinedAncEnabledChanged;
+    /// <summary>
+    /// Raised when the cached passthrough enabled value changes.
+    /// </summary>
+    public event EventHandler<NuraValueChangedEventArgs<bool?>>? PassthroughEnabledChanged;
+
+    public event EventHandler<NuraValueChangedEventArgs<bool?>>? GlobalAncEnabledChanged;
 
     public event EventHandler<NuraValueChangedEventArgs<bool?>>? SpatialEnabledChanged;
 
@@ -32,13 +48,27 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
 
     public event EventHandler<NuraValueChangedEventArgs<NuraProEq?>>? ProEqChanged;
 
+    /// <summary>
+    /// Gets the last known ANC state for the connected device.
+    /// </summary>
     public NuraAncState? Anc => _anc;
 
+    /// <summary>
+    /// Gets the last known ANC level for the connected device.
+    /// </summary>
     public int? AncLevel => _ancLevel;
 
-    public bool? GlobalAncEnabled => _globalAncEnabled;
+    /// <summary>
+    /// Gets the last known ANC enabled state for the connected device.
+    /// </summary>
+    public bool? AncEnabled => _anc?.AncEnabled;
 
-    public bool? CombinedAncEnabled => _combinedAncEnabled;
+    /// <summary>
+    /// Gets the last known passthrough enabled state for the connected device.
+    /// </summary>
+    public bool? PassthroughEnabled => _anc?.PassthroughEnabled;
+
+    public bool? GlobalAncEnabled => _globalAncEnabled;
 
     public bool? SpatialEnabled => _spatialEnabled;
 
@@ -58,6 +88,18 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         if (!Equals(previous, state)) {
             AncChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraAncState>(previous, state));
         }
+
+        var previousAncEnabled = previous?.AncEnabled;
+        var currentAncEnabled = state?.AncEnabled;
+        if (previousAncEnabled != currentAncEnabled) {
+            AncEnabledChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<bool?>(previousAncEnabled, currentAncEnabled));
+        }
+
+        var previousPassthroughEnabled = previous?.PassthroughEnabled;
+        var currentPassthroughEnabled = state?.PassthroughEnabled;
+        if (previousPassthroughEnabled != currentPassthroughEnabled) {
+            PassthroughEnabledChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<bool?>(previousPassthroughEnabled, currentPassthroughEnabled));
+        }
     }
 
     internal void UpdateAncLevel(int? level) {
@@ -73,14 +115,6 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _globalAncEnabled = enabled;
         if (previous != enabled) {
             GlobalAncEnabledChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<bool?>(previous, enabled));
-        }
-    }
-
-    internal void UpdateCombinedAncEnabled(bool? enabled) {
-        var previous = _combinedAncEnabled;
-        _combinedAncEnabled = enabled;
-        if (previous != enabled) {
-            CombinedAncEnabledChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<bool?>(previous, enabled));
         }
     }
 
@@ -132,26 +166,73 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         }
     }
 
-    [Utilities.Docs.BluetoothImplementationRequired("State", Notes = "Needs transport-backed ANC state retrieval from the headset.")]
+    /// <summary>
+    /// Actively retrieves the current ANC state from the headset.
+    /// </summary>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task<NuraAncState?> RetrieveAncAsync(CancellationToken cancellationToken = default) {
-        cancellationToken.ThrowIfCancellationRequested();
-        throw new NotImplementedException("Bluetooth ANC state retrieval has not been wired into NuraLib yet.");
+        return nuraDevice.RetrieveAncStateAsync(cancellationToken);
     }
 
-    [Utilities.Docs.BluetoothImplementationRequired("State", Notes = "Needs transport-backed ANC state update on the headset.")]
+    /// <summary>
+    /// Sends a request to change the ANC state on the headset.
+    /// </summary>
+    /// <param name="state">The desired ANC state.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task SetAncAsync(NuraAncState state, CancellationToken cancellationToken = default) {
-        cancellationToken.ThrowIfCancellationRequested();
-        _ = state ?? throw new ArgumentNullException(nameof(state));
-        throw new NotImplementedException("Bluetooth ANC state update has not been wired into NuraLib yet.");
+        return nuraDevice.SetAncStateAsync(state, cancellationToken);
+    }
+
+    /// <summary>
+    /// Actively retrieves whether ANC is currently enabled.
+    /// </summary>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    public async Task<bool?> RetrieveAncEnabledAsync(CancellationToken cancellationToken = default) {
+        return (await nuraDevice.RetrieveAncStateAsync(cancellationToken))?.AncEnabled;
+    }
+
+    /// <summary>
+    /// Sends a request to enable or disable ANC.
+    /// </summary>
+    /// <param name="enabled">The desired ANC enabled state.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    public Task SetAncEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
+        return nuraDevice.SetAncEnabledAsync(enabled, cancellationToken);
+    }
+
+    /// <summary>
+    /// Actively retrieves whether passthrough is currently enabled.
+    /// </summary>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    public async Task<bool?> RetrievePassthroughEnabledAsync(CancellationToken cancellationToken = default) {
+        return (await nuraDevice.RetrieveAncStateAsync(cancellationToken))?.PassthroughEnabled;
+    }
+
+    /// <summary>
+    /// Sends a request to enable or disable passthrough.
+    /// </summary>
+    /// <param name="enabled">The desired passthrough enabled state.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    public Task SetPassthroughEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
+        return nuraDevice.SetPassthroughEnabledAsync(enabled, cancellationToken);
     }
 
     [Utilities.Docs.BluetoothImplementationRequired("State", Notes = "Needs transport-backed ANC level retrieval from the headset.")]
+    /// <summary>
+    /// Actively retrieves the current ANC level from the headset.
+    /// </summary>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task<int?> RetrieveAncLevelAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         throw new NotImplementedException("Bluetooth ANC level retrieval has not been wired into NuraLib yet.");
     }
 
     [Utilities.Docs.BluetoothImplementationRequired("State", Notes = "Needs transport-backed ANC level update on the headset.")]
+    /// <summary>
+    /// Sends a request to change the ANC level on the headset.
+    /// </summary>
+    /// <param name="level">The desired ANC level.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task SetAncLevelAsync(int level, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         _ = level;
@@ -169,19 +250,6 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         cancellationToken.ThrowIfCancellationRequested();
         _ = enabled;
         throw new NotImplementedException("Bluetooth global ANC update has not been wired into NuraLib yet.");
-    }
-
-    [Utilities.Docs.BluetoothImplementationRequired("State", Notes = "Needs transport-backed combined ANC retrieval from the headset.")]
-    public Task<bool?> RetrieveCombinedAncEnabledAsync(CancellationToken cancellationToken = default) {
-        cancellationToken.ThrowIfCancellationRequested();
-        throw new NotImplementedException("Bluetooth combined ANC retrieval has not been wired into NuraLib yet.");
-    }
-
-    [Utilities.Docs.BluetoothImplementationRequired("State", Notes = "Needs transport-backed combined ANC update on the headset.")]
-    public Task SetCombinedAncEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
-        cancellationToken.ThrowIfCancellationRequested();
-        _ = enabled;
-        throw new NotImplementedException("Bluetooth combined ANC update has not been wired into NuraLib yet.");
     }
 
     [Utilities.Docs.BluetoothImplementationRequired("State", Notes = "Needs transport-backed spatial state retrieval from the headset.")]
