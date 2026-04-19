@@ -141,7 +141,23 @@
                 </Grid>
 
                 <Grid Grid.Row="1" Margin="0,18,0,18">
-                    <Border Width="270" Height="270" CornerRadius="135" Background="#08FF57B9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Ellipse Width="270"
+                             Height="270"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush Center="0.5,0.5"
+                                                 GradientOrigin="0.5,0.5"
+                                                 RadiusX="0.5"
+                                                 RadiusY="0.5">
+                                <GradientStop Color="#14FF57B9" Offset="0" />
+                                <GradientStop Color="#10FF57B9" Offset="0.42" />
+                                <GradientStop Color="#08FF57B9" Offset="0.66" />
+                                <GradientStop Color="#02FF57B9" Offset="0.86" />
+                                <GradientStop Color="#00FF57B9" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
                     <Ellipse Width="236" Height="236" Stroke="#18FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     <Ellipse Width="192" Height="192" Stroke="#12FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     <Grid Width="226"

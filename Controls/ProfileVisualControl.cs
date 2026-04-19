@@ -95,19 +95,8 @@ public sealed class ProfileVisualControl : FrameworkElement {
         double ImmersionValue,
         bool UseBitmapRenderer);
 
-    private sealed record CachedShapeState(
-        DrawingGroup? Drawing,
-        double DrawingSize,
-        ProfileModel? FromProfile,
-        ProfileModel? ToProfile,
-        double BlendProgress,
-        double ModeProgress,
-        double ImmersionValue,
-        bool IsMorphing);
-
     private static readonly ConditionalWeakTable<ProfileModel, double[]> ProfileCurveCache = new();
     private CachedBitmapState? bitmapState = null;
-    private static CachedShapeState? cachedShapeState = null;
     private RetainedShapeState? shapeState = null;
     private DrawingGroup? shapeDrawing = null;
     private RetainedBandLayer[] bandLayers = Array.Empty<RetainedBandLayer>();
@@ -526,13 +515,8 @@ public sealed class ProfileVisualControl : FrameworkElement {
         bitmapState = new(null, 0, null, null, double.NaN, double.NaN, double.NaN, UseBitmapRenderer);
     }
 
-    private void InvalidateShapeCache() {
-        cachedShapeState = new(null, 0, null, null, double.NaN, double.NaN, double.NaN, false);
-    }
-
     private void InvalidateRenderCaches() {
         InvalidateBitmapCache();
-        InvalidateShapeCache();
     }
 
     private static bool NearlyEqual(double a, double b) => Math.Abs(a - b) < 0.0001;
