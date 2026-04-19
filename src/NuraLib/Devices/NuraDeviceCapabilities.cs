@@ -1,6 +1,12 @@
 namespace NuraLib.Devices;
 
+/// <summary>
+/// Resolves normalized device families and derived capability flags from raw type labels and firmware versions.
+/// </summary>
 public static class NuraDeviceCapabilities {
+    /// <summary>
+    /// Resolves a raw device type label to a normalized <see cref="NuraDeviceType"/>.
+    /// </summary>
     public static NuraDeviceType ResolveType(string? rawType) {
         if (string.IsNullOrWhiteSpace(rawType)) {
             return NuraDeviceType.Unknown;
@@ -24,6 +30,9 @@ public static class NuraDeviceCapabilities {
         };
     }
 
+    /// <summary>
+    /// Gets the normalized lowercase type tag for a device family.
+    /// </summary>
     public static string GetTypeTag(NuraDeviceType deviceType) =>
         deviceType switch {
             NuraDeviceType.Nuraphone => "nuraphone",
@@ -35,6 +44,9 @@ public static class NuraDeviceCapabilities {
             _ => "unknown"
         };
 
+    /// <summary>
+    /// Gets the human-readable debug name for a device family.
+    /// </summary>
     public static string GetDebugName(NuraDeviceType deviceType) =>
         deviceType switch {
             NuraDeviceType.Nuraphone => "Nuraphone",
@@ -46,12 +58,18 @@ public static class NuraDeviceCapabilities {
             _ => "Unknown"
         };
 
+    /// <summary>
+    /// Determines whether the specified device family is true wireless.
+    /// </summary>
     public static bool IsTws(NuraDeviceType deviceType) =>
         deviceType is NuraDeviceType.NuraTrue or
                      NuraDeviceType.NuraBuds or
                      NuraDeviceType.NuraTruePro or
                      NuraDeviceType.NuraTrueSport;
 
+    /// <summary>
+    /// Gets the minimum firmware version considered compatible for the specified device family.
+    /// </summary>
     public static int GetMinimumFirmwareVersion(NuraDeviceType deviceType) =>
         deviceType switch {
             NuraDeviceType.Nuraphone => 600,
@@ -63,6 +81,9 @@ public static class NuraDeviceCapabilities {
             _ => 0
         };
 
+    /// <summary>
+    /// Gets the minimum firmware version required for the official-app offline policy for the specified device family.
+    /// </summary>
     public static int GetMinimumFirmwareVersionForOfflineMode(NuraDeviceType deviceType) =>
         deviceType switch {
             NuraDeviceType.Nuraphone => 1000,
@@ -74,8 +95,132 @@ public static class NuraDeviceCapabilities {
             _ => 0
         };
 
+    /// <summary>
+    /// Gets the default immersion level used by the library for the specified device family.
+    /// </summary>
     public static int GetDefaultImmersionLevel(NuraDeviceType deviceType) => 6;
 
+    /// <summary>
+    /// Computes the supported audio capability set for a device family and firmware version.
+    /// </summary>
+    public static NuraAudioCapabilities GetAudioCapabilities(NuraDeviceType deviceType, int firmwareVersion) {
+        var features = GetSupportedFeatures(deviceType, firmwareVersion);
+        var capabilities = NuraAudioCapabilities.None;
+
+        if (features.HasFlag(NuraSupportedFeatures.Anc)) capabilities |= NuraAudioCapabilities.Anc;
+        if (features.HasFlag(NuraSupportedFeatures.AncLevel)) capabilities |= NuraAudioCapabilities.AncLevel;
+        if (features.HasFlag(NuraSupportedFeatures.GlobalAncToggle)) capabilities |= NuraAudioCapabilities.GlobalAncToggle;
+        if (features.HasFlag(NuraSupportedFeatures.Immersion)) capabilities |= NuraAudioCapabilities.Immersion;
+        if (features.HasFlag(NuraSupportedFeatures.KickIt)) capabilities |= NuraAudioCapabilities.KickIt;
+        if (features.HasFlag(NuraSupportedFeatures.Spatial)) capabilities |= NuraAudioCapabilities.Spatial;
+        if (features.HasFlag(NuraSupportedFeatures.ProEq)) capabilities |= NuraAudioCapabilities.ProEq;
+        if (features.HasFlag(NuraSupportedFeatures.PersonalisedMode)) capabilities |= NuraAudioCapabilities.PersonalisedMode;
+        if (features.HasFlag(NuraSupportedFeatures.EuAttenuation)) capabilities |= NuraAudioCapabilities.EuAttenuation;
+        if (features.HasFlag(NuraSupportedFeatures.AnalogDigitalEuAttenuation)) capabilities |= NuraAudioCapabilities.AnalogDigitalEuAttenuation;
+        if (features.HasFlag(NuraSupportedFeatures.VisualisationData)) capabilities |= NuraAudioCapabilities.VisualisationData;
+
+        return capabilities;
+    }
+
+    /// <summary>
+    /// Computes the supported interaction capability set for a device family and firmware version.
+    /// </summary>
+    public static NuraInteractionCapabilities GetInteractionCapabilities(NuraDeviceType deviceType, int firmwareVersion) {
+        var features = GetSupportedFeatures(deviceType, firmwareVersion);
+        var capabilities = NuraInteractionCapabilities.None;
+
+        if (features.HasFlag(NuraSupportedFeatures.TouchButtons)) capabilities |= NuraInteractionCapabilities.TouchButtons;
+        if (features.HasFlag(NuraSupportedFeatures.Dial)) capabilities |= NuraInteractionCapabilities.Dial;
+        if (features.HasFlag(NuraSupportedFeatures.HeadDetection)) capabilities |= NuraInteractionCapabilities.HeadDetection;
+        if (features.HasFlag(NuraSupportedFeatures.ManualHeadDetection)) capabilities |= NuraInteractionCapabilities.ManualHeadDetection;
+        if (features.HasFlag(NuraSupportedFeatures.DoubleTap)) capabilities |= NuraInteractionCapabilities.DoubleTap;
+        if (features.HasFlag(NuraSupportedFeatures.TripleTap)) capabilities |= NuraInteractionCapabilities.TripleTap;
+        if (features.HasFlag(NuraSupportedFeatures.VoicePromptGain)) capabilities |= NuraInteractionCapabilities.VoicePromptGain;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonPlayPauseAnswer)) capabilities |= NuraInteractionCapabilities.ButtonPlayPauseAnswer;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonVoiceAssistant)) capabilities |= NuraInteractionCapabilities.ButtonVoiceAssistant;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonVolumeUpDown)) capabilities |= NuraInteractionCapabilities.ButtonVolumeUpDown;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonPrevNextTrack)) capabilities |= NuraInteractionCapabilities.ButtonPrevNextTrack;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonToggleSocial)) capabilities |= NuraInteractionCapabilities.ButtonToggleSocial;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonKickItUpDown)) capabilities |= NuraInteractionCapabilities.ButtonKickItUpDown;
+
+        return capabilities;
+    }
+
+    /// <summary>
+    /// Computes the supported system capability set for a device family and firmware version.
+    /// </summary>
+    public static NuraSystemCapabilities GetSystemCapabilities(NuraDeviceType deviceType, int firmwareVersion) {
+        var features = GetSupportedFeatures(deviceType, firmwareVersion);
+        var capabilities = NuraSystemCapabilities.None;
+
+        if (features.HasFlag(NuraSupportedFeatures.DeviceInfo)) capabilities |= NuraSystemCapabilities.DeviceInfo;
+        if (features.HasFlag(NuraSupportedFeatures.Profiles)) capabilities |= NuraSystemCapabilities.Profiles;
+        if (features.HasFlag(NuraSupportedFeatures.BulkCommands)) capabilities |= NuraSystemCapabilities.BulkCommands;
+        if (features.HasFlag(NuraSupportedFeatures.UserId)) capabilities |= NuraSystemCapabilities.UserId;
+        if (features.HasFlag(NuraSupportedFeatures.MspFirmwareVersion)) capabilities |= NuraSystemCapabilities.MspFirmwareVersion;
+        if (features.HasFlag(NuraSupportedFeatures.InsertionDataV2)) capabilities |= NuraSystemCapabilities.InsertionDataV2;
+        if (features.HasFlag(NuraSupportedFeatures.Multipoint)) capabilities |= NuraSystemCapabilities.Multipoint;
+
+        return capabilities;
+    }
+
+    /// <summary>
+    /// Computes the supported button-function families for a device family and firmware version.
+    /// </summary>
+    public static NuraButtonFunctionSupport GetSupportedButtonFunctions(NuraDeviceType deviceType, int firmwareVersion) {
+        var features = GetSupportedFeatures(deviceType, firmwareVersion);
+        var capabilities = NuraButtonFunctionSupport.None;
+
+        if (features.HasFlag(NuraSupportedFeatures.ButtonPlayPauseAnswer)) capabilities |= NuraButtonFunctionSupport.PlayPauseAnswer;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonVoiceAssistant)) capabilities |= NuraButtonFunctionSupport.VoiceAssistant;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonVolumeUpDown)) capabilities |= NuraButtonFunctionSupport.VolumeUpDown;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonPrevNextTrack)) capabilities |= NuraButtonFunctionSupport.PrevNextTrack;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonToggleSocial)) capabilities |= NuraButtonFunctionSupport.ToggleSocial;
+        if (features.HasFlag(NuraSupportedFeatures.ButtonKickItUpDown)) capabilities |= NuraButtonFunctionSupport.KickItUpDown;
+
+        return capabilities;
+    }
+
+    /// <summary>
+    /// Builds the grouped capability information for a device family and firmware version.
+    /// </summary>
+    public static NuraDeviceCapabilityInfo GetCapabilityInfo(NuraDeviceType deviceType, int firmwareVersion) {
+        var features = GetSupportedFeatures(deviceType, firmwareVersion);
+        return new NuraDeviceCapabilityInfo {
+            Features = features,
+            Audio = GetAudioCapabilities(deviceType, firmwareVersion),
+            Interaction = GetInteractionCapabilities(deviceType, firmwareVersion),
+            System = GetSystemCapabilities(deviceType, firmwareVersion),
+            ButtonGestures = GetSupportedButtonGestures(deviceType, firmwareVersion),
+            ButtonFunctions = GetSupportedButtonFunctions(deviceType, firmwareVersion)
+        };
+    }
+
+    /// <summary>
+    /// Computes the supported touch-button gesture slots for a device family and firmware version.
+    /// </summary>
+    public static NuraButtonGestureSupport GetSupportedButtonGestures(NuraDeviceType deviceType, int firmwareVersion) {
+        var supportedFeatures = GetSupportedFeatures(deviceType, firmwareVersion);
+        if (!supportedFeatures.HasFlag(NuraSupportedFeatures.TouchButtons)) {
+            return NuraButtonGestureSupport.None;
+        }
+
+        var gestures = NuraButtonGestureSupport.SingleTap | NuraButtonGestureSupport.TapAndHold;
+
+        if (supportedFeatures.HasFlag(NuraSupportedFeatures.DoubleTap)) {
+            gestures |= NuraButtonGestureSupport.DoubleTap;
+        }
+
+        if (supportedFeatures.HasFlag(NuraSupportedFeatures.TripleTap)) {
+            gestures |= NuraButtonGestureSupport.TripleTap;
+        }
+
+        return gestures;
+    }
+
+    /// <summary>
+    /// Computes the supported-feature set for a device family and firmware version.
+    /// </summary>
     public static NuraSupportedFeatures GetSupportedFeatures(NuraDeviceType deviceType, int firmwareVersion) {
         var features = NuraSupportedFeatures.DeviceInfo | NuraSupportedFeatures.Profiles;
 

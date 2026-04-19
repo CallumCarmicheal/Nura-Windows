@@ -1,6 +1,9 @@
 namespace NuraLib.Devices;
 
 [Flags]
+/// <summary>
+/// Describes device capabilities derived from device family and firmware version.
+/// </summary>
 public enum NuraSupportedFeatures {
     None = 0,
     DeviceInfo = 1 << 0,
