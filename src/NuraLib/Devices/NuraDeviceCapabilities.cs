@@ -98,7 +98,7 @@ public static class NuraDeviceCapabilities {
     /// <summary>
     /// Gets the default immersion level used by the library for the specified device family.
     /// </summary>
-    public static int GetDefaultImmersionLevel(NuraDeviceType deviceType) => 6;
+    public static NuraImmersionLevel GetDefaultImmersionLevel(NuraDeviceType deviceType) => NuraImmersionLevel.Positive4;
 
     /// <summary>
     /// Computes the supported audio capability set for a device family and firmware version.

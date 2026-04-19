@@ -67,6 +67,26 @@ internal static class ActionHandler {
                 new("--frame-hex <hex>", "frame-hex", Optional: false, Description: "Full GAIA frame as hex")
             ]),
         new(
+            ["extract logcat-auth545 language-change"],
+            static () => new ActionExtractLogcatAuth545LanguageChange(),
+            Example: "extract logcat-auth545 language-change --log-path <path> [--output-dir <path>]",
+            HelpText: "Offline parser for full NURA_FRIDA logcat captures. Extracts change_language Bluetooth TX payloads, writes raw encrypted stage blobs, and attempts app_enc key/nonce decryption without touching the headset or backend.",
+            Arguments:
+            [
+                new("--log-path <path>", "log-path", Optional: false, Description: "Full NURA_FRIDA log containing net454.bt.tx lines and session/start_4 app_enc key/nonce"),
+                new("--output-dir <path>", "output-dir", Description: "Optional output directory; defaults to a timestamped logs folder")
+            ]),
+        new(
+            ["extract frida-folder language-probe"],
+            static () => new ActionExtractFridaFolderLanguageProbe(),
+            Example: "extract frida-folder language-probe --folder <path> [--output-dir <path>]",
+            HelpText: "Probe a file-based Frida language-change capture. Replays response packet order with the captured app_enc key/nonce and reports whether authenticated packets verify under likely counter directions.",
+            Arguments:
+            [
+                new("--folder <path>", "folder", Optional: false, Description: "Frida nura_logs run folder containing *.req.json, *.resp.json, and Bluetooth NDJSON files"),
+                new("--output-dir <path>", "output-dir", Description: "Optional output directory; defaults to crypto_probe under the Frida run folder")
+            ]),
+        new(
             ["headset live-handshake"],
             static () => new ActionLiveHandshake(),
             Example: "headset live-handshake",
@@ -153,6 +173,64 @@ internal static class ActionHandler {
                 new("--app-start-time <unix-ms>", "app-start-time", Description: "Override app_start_time when using --with-app-context")
             ]),
         new(
+            ["auth upgrade-info"],
+            static () => new ActionAuthUpgradeInfo(),
+            Example: "auth upgrade-info [--source <auto|cached|app-session|validate-token|upgrade-entry>] [--upgrade-endpoint <path>] [--language <code>] [--firmware-version <int>] [--app-start-time <unix-ms>]",
+            HelpText: "Extract firmware upgrade metadata from cached or freshly fetched automated responses, and trace any typed actions returned by the real upgrade flow.",
+            Arguments:
+            [
+                new("--source <mode>", "source", Default: "auto", Description: "Where to read upgrade metadata from", AllowedValues: ["auto", "cached", "app-session", "validate-token", "upgrade-entry"]),
+                new("--upgrade-endpoint <path>", "upgrade-endpoint", Default: "upgrade", Description: "Automated upgrade endpoint to call for upgrade-entry mode"),
+                new("--language <code>", "language", Default: "en", Description: "Device language code for upgrade-entry mode"),
+                new("--firmware-version <int>", "firmware-version", Description: "Optional firmware version override; if provided, start a fresh backend bluetooth session using the configured serial before calling upgrade"),
+                new("--app-start-time <unix-ms>", "app-start-time", Description: "Override app_start_time for refresh modes")
+            ]),
+        new(
+            ["auth upgrade-dump"],
+            static () => new ActionAuthUpgradeDump(),
+            Example: "auth upgrade-dump [--upgrade-endpoint <path>] [--language <code>] [--session <int>] [--firmware-version <int>] [--output-dir <path>]",
+            HelpText: "Call the real automated classic upgrade entry but stop at the returned action list, dumping the raw response and every returned packet payload to disk without executing any Bluetooth packets.",
+            Arguments:
+            [
+                new("--upgrade-endpoint <path>", "upgrade-endpoint", Default: "upgrade", Description: "Automated upgrade endpoint to call"),
+                new("--language <code>", "language", Default: "en", Description: "Device language code to send with the upgrade request"),
+                new("--session <int>", "session", Description: "Optional explicit backend bluetooth session id override"),
+                new("--firmware-version <int>", "firmware-version", Description: "Optional firmware version override; if provided, start a fresh backend bluetooth session using the configured serial before calling upgrade"),
+                new("--output-dir <path>", "output-dir", Description: "Optional output directory for dumped files; defaults to a timestamped folder under logs")
+            ]),
+        new(
+            ["auth language-dump"],
+            static () => new ActionAuthLanguageDump(),
+            Example: "auth language-dump [--language <code>] [--payload-json <path>] [--manual] [--endpoint <path>] [--packets-json <path>] [--session <int>] [--output-dir <path>]",
+            HelpText: "Safe default: run app-session/auth/bootstrap through session/start_4, submit analytics, send only the change_language prepare packets to the headset, call change_language_1, dump the returned bulk payload, and stop before any bulk transfer packets are sent. Use --manual or continuation args to keep the old one-endpoint dump behavior.",
+            Arguments:
+            [
+                new("--endpoint <path>", "endpoint", Default: "change_language", Description: "Automated language endpoint to call, such as change_language, change_language_1, change_language_2, or change_language_3"),
+                new("--language <code>", "language", Default: "de", Description: "Target device language code for the initial change_language request when --payload-json is not supplied"),
+                new("--payload-json <path>", "payload-json", Description: "Optional json object to merge into the automated request body instead of the default language payload"),
+                new("--prepare-log-path <path>", "prepare-log-path", Description: "Full NURA_FRIDA log to use for captured prepare-stage headset responses instead of sending prepare packets to the live headset"),
+                new("--packets-json <path>", "packets-json", Description: "Optional json array/object containing the packets to post back to the backend for continuation endpoints"),
+                new("--manual", "manual", Description: "Skip the full safe flow and only call the requested endpoint using saved/explicit state"),
+                new("--overall-timeout-ms <int>", "overall-timeout-ms", Default: "180000", Description: "Overall timeout for the full safe flow"),
+                new("--session <int>", "session", Description: "Optional explicit backend bluetooth session id override"),
+                new("--firmware-version <int>", "firmware-version", Description: "Optional firmware version override; if provided, start a fresh backend bluetooth session using the configured serial before calling change_language"),
+                new("--output-dir <path>", "output-dir", Description: "Optional output directory for dumped files; defaults to a timestamped folder under logs")
+            ]),
+        new(
+            ["auth language-dump-static"],
+            static () => new ActionAuthLanguageDumpStatic(),
+            Example: "auth language-dump-static [--endpoint <path>] [--language <code>] [--log-path <path>] [--session <int>] [--firmware-version <int>] [--output-dir <path>]",
+            HelpText: "Call a change_language automated endpoint using statically captured Bluetooth response packets from the logged official-app language-update flow instead of a live headset. For continuation endpoints, pass --log-path to the full NURA_FRIDA log so the packets can be derived automatically.",
+            Arguments:
+            [
+                new("--endpoint <path>", "endpoint", Default: "change_language_1", Description: "Automated language endpoint to call. Use change_language for the initial request or change_language_1/change_language_2/change_language_3 for static continuation replay"),
+                new("--language <code>", "language", Default: "ja", Description: "Target device language code when calling the initial change_language endpoint"),
+                new("--log-path <path>", "log-path", Description: "Full NURA_FRIDA log containing the captured Bluetooth rx/tx lines used for static continuation replay. Required for change_language_1/change_language_2/change_language_3"),
+                new("--session <int>", "session", Description: "Optional explicit backend bluetooth session id override"),
+                new("--firmware-version <int>", "firmware-version", Description: "Optional firmware version override; if provided, start a fresh backend bluetooth session using the configured serial before calling change_language"),
+                new("--output-dir <path>", "output-dir", Description: "Optional output directory for dumped files; defaults to a timestamped folder under logs")
+            ]),
+        new(
             ["auth user-session-log"],
             static () => new ActionAuthUserSessionLog(),
             Example: "auth user-session-log [--endpoint <path>] [--usid <int>]",
@@ -165,12 +243,13 @@ internal static class ActionHandler {
         new(
             ["auth session-log"],
             static () => new ActionAuthSessionLog(),
-            Example: "auth session-log [--endpoint <path>] [--session <int>]",
+            Example: "auth session-log [--endpoint <path>] [--session <int>] [--payload-json <path>]",
             HelpText: "Probe the authenticated bluetooth/session log endpoint and persist any returned session identifiers.",
             Arguments:
             [
                 new("--endpoint <path>", "endpoint", Default: "session/log", Description: "Endpoint candidate to test"),
-                new("--session <int>", "session", Description: "Optional session id payload to test")
+                new("--session <int>", "session", Description: "Optional session id payload to test"),
+                new("--payload-json <path>", "payload-json", Description: "Optional json object to use as the request payload; if --session is also supplied it overrides the payload's session field")
             ]),
         new(
             ["auth app-session", "auth app-start-cold"],
@@ -192,7 +271,19 @@ internal static class ActionHandler {
                 new("--serial <int>", "serial", Optional: false, Description: "Headset serial number"),
                 new("--firmware-version <int>", "firmware-version", Optional: false, Description: "Headset firmware version"),
                 new("--max-packet-length <int>", "max-packet-length", Default: "182", Description: "Maximum packet length hint"),
+                new("--max-bulk-packet-length <int>", "max-bulk-packet-length", Default: "0", Description: "Maximum bulk packet length hint"),
                 new("--usid <int>", "usid", Description: "Explicit user session id override if auth state does not have one")
+            ]),
+        new(
+            ["auth session-start-static"],
+            static () => new ActionAuthSessionStartStatic(),
+            Example: "auth session-start-static --log-path <path> [--session <int>] [--output-dir <path>]",
+            HelpText: "Replay the captured official-app session/start_1/_2/_3/_4 continuation packets against a fresh backend bluetooth session, without using a live headset.",
+            Arguments:
+            [
+                new("--log-path <path>", "log-path", Optional: false, Description: "Full NURA_FRIDA log containing the captured Bluetooth rx/tx lines used for static continuation replay"),
+                new("--session <int>", "session", Description: "Optional explicit backend bluetooth session id override; otherwise uses the saved auth state session"),
+                new("--output-dir <path>", "output-dir", Description: "Optional root output directory for dumped response files")
             ]),
         new(
             ["auth session-start-continue", "auth session-start-1"],
@@ -242,6 +333,13 @@ internal static class ActionHandler {
     }
 
     internal static string ResolveCommandName(string[] args) {
+        if (args.Length >= 3) {
+            var groupedCommand = $"{args[0].ToLowerInvariant()} {args[1].ToLowerInvariant()} {args[2].ToLowerInvariant()}";
+            if (Find(groupedCommand) is not null) {
+                return groupedCommand;
+            }
+        }
+
         if (args.Length >= 2) {
             var groupedCommand = $"{args[0].ToLowerInvariant()} {args[1].ToLowerInvariant()}";
             if (Find(groupedCommand) is not null) {

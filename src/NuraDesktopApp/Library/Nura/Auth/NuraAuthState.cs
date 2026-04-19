@@ -71,6 +71,7 @@ internal sealed record class NuraAuthState {
         string? clientKey,
         string? authUid,
         long? expiryUnixSeconds,
+        string? apiBase,
         Dictionary<string, object?>? responseBody,
         string? emailAddress = null,
         int? userSessionId = null,
@@ -82,7 +83,7 @@ internal sealed record class NuraAuthState {
         string? appEncKey = null,
         string? appEncNonce = null) {
         return new NuraAuthState {
-            ApiBase = ApiBase,
+            ApiBase = string.IsNullOrWhiteSpace(apiBase) ? ApiBase : apiBase,
             Uuid = Uuid,
             EmailAddress = emailAddress ?? EmailAddress,
             AccessToken = accessToken ?? AccessToken,

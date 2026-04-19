@@ -51,27 +51,17 @@ internal static class BluetoothDeviceProbe {
         try {
             await transport.ConnectAsync(device.Address, cancellationToken);
 
-            var deviceInfoResponse = await transport.ExchangeAsync(
-                NuraQueryFactory.CreateGetDeviceInfo(),
-                GaiaCommandId.GetDeviceInfo,
+            var deviceInfo = await transport.ExecuteAsync(
+                NuraCommandFactory.CreateGetDeviceInfo(),
+                runtime: null,
                 cancellationToken);
-
-            var deviceInfoPayload = deviceInfoResponse.PayloadExcludingStatus;
-            if (!NuraResponseParsers.TryDecodeDeviceInfo(deviceInfoPayload, out var deviceInfo)) {
-                logger.Warning(Source, $"Failed to decode basic device info for {device.Address}.");
-                return null;
-            }
 
             ExtendedDeviceInfo? extendedInfo = null;
             try {
-                var extendedInfoResponse = await transport.ExchangeAsync(
-                    NuraQueryFactory.CreateGetExtendedDeviceInfo(),
-                    GaiaCommandId.GetExtendedDeviceInfo,
+                extendedInfo = await transport.ExecuteAsync(
+                    NuraCommandFactory.CreateGetExtendedDeviceInfo(),
+                    runtime: null,
                     cancellationToken);
-                var extendedInfoPayload = extendedInfoResponse.PayloadExcludingStatus;
-                if (NuraResponseParsers.TryDecodeExtendedDeviceInfo(extendedInfoPayload, out var parsed)) {
-                    extendedInfo = parsed;
-                }
             } catch (Exception ex) {
                 logger.Debug(Source, $"Extended device info probe failed for {device.Address}: {ex.Message}");
             }

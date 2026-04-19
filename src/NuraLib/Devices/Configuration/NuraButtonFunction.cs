@@ -24,8 +24,11 @@ public enum NuraButtonFunction {
     RejectCall,
     PlayPauseAndAnswerCall,
     VoiceAssistant,
+    Mute,
     TogglePassthroughAndPause,
     KickItUp,
     KickItDown,
+    ToggleSpatial,
+    ToggleGamingMode,
     Unknown
 }

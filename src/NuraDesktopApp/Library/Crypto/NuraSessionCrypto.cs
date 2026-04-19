@@ -70,6 +70,20 @@ internal sealed class NuraSessionCrypto {
         return ApplyCtr(payload, _decryptCounterBlock);
     }
 
+    public byte[] DecryptAuthenticatedFromEncryptCounter(byte[] payload) {
+        if (payload.Length < 16) {
+            throw new InvalidOperationException("authenticated payload must contain a 16-byte tag");
+        }
+
+        var tag = payload[..16];
+        var cipherText = payload[16..];
+        return DecryptAuthenticatedInternal(_encryptCounterBlock, cipherText, tag);
+    }
+
+    public byte[] DecryptUnauthenticatedFromEncryptCounter(byte[] payload) {
+        return ApplyCtr(payload, _encryptCounterBlock);
+    }
+
     private (byte[] Tag, byte[] Crypt) EncryptAuthenticatedInternal(byte[] counterBlock, byte[] payload) {
         var j0 = counterBlock.ToArray();
         IncrementCounterBlock(counterBlock);
@@ -115,6 +129,8 @@ internal sealed class NuraSessionCrypto {
             for (var i = 0; i < remaining; i++) {
                 output[offset + i] = (byte)(payload[offset + i] ^ keystream[i]);
             }
+
+            IncrementCounterBlock(counterBlock);
         }
 
         return output;

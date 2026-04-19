@@ -25,9 +25,6 @@ internal static class LocalStateFiles {
     private static string ResolveConfigPath() {
         var candidates = new[] {
             Path.Combine(Directory.GetCurrentDirectory(), "nura-config.json"),
-            Path.Combine(Directory.GetCurrentDirectory(), "src", "NuraDesktopApp", "nura-config.json"),
-            Path.Combine(AppContext.BaseDirectory, "nura-config.json"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "nura-config.json"),
         };
 
         var normalizedCandidates = candidates
@@ -46,9 +43,10 @@ internal static class LocalStateFiles {
     private static string ResolveAuthStatePath() {
         var candidates = new[] {
             Path.Combine(Directory.GetCurrentDirectory(), "nura-auth.json"),
+            Path.Combine(Directory.GetCurrentDirectory(), "desktop-app", "nura-auth.json"),
             Path.Combine(Directory.GetCurrentDirectory(), "src", "NuraDesktopApp", "nura-auth.json"),
-            Path.Combine(AppContext.BaseDirectory, "nura-auth.json"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "nura-auth.json")
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "nura-auth.json"),
+            Path.Combine(AppContext.BaseDirectory, "nura-auth.json")
         };
 
         var normalizedCandidates = candidates

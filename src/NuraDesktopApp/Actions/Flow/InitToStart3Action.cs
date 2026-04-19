@@ -83,13 +83,14 @@ internal sealed class ActionFlowInitToStart3 : IAction {
         SessionLogger logger) {
         logger.WriteLine("flow.step=auth-check");
         if (state.HasAuthenticatedSession) {
-            var validatedState = await ValidateTokenAsync(state, authPath, client, logger);
-            if (validatedState.HasAuthenticatedSession && validatedState.UserSessionId is not null) {
+            var validation = await ValidateTokenAsync(state, authPath, client, logger);
+            if (validation.Success && validation.State.HasAuthenticatedSession && validation.State.UserSessionId is not null) {
                 logger.WriteLine("flow.auth.mode=resume");
-                return validatedState;
+                return validation.State;
             }
 
-            state = validatedState;
+            state = validation.State;
+            logger.WriteLine("flow.auth.resume_failed=true");
         }
 
         logger.WriteLine("flow.auth.mode=interactive_login");
@@ -175,8 +176,9 @@ internal sealed class ActionFlowInitToStart3 : IAction {
                 continue;
             }
 
-            state = await ValidateTokenAsync(state, authPath, client, logger);
-            if (state.HasAuthenticatedSession && state.UserSessionId is not null) {
+            var validation = await ValidateTokenAsync(state, authPath, client, logger);
+            state = validation.State;
+            if (validation.Success && state.HasAuthenticatedSession && state.UserSessionId is not null) {
                 return state;
             }
 
@@ -185,13 +187,13 @@ internal sealed class ActionFlowInitToStart3 : IAction {
         }
     }
 
-    private static async Task<NuraAuthState> ValidateTokenAsync(
+    private static async Task<AuthValidationResult> ValidateTokenAsync(
         NuraAuthState state,
         string authPath,
         NuraAuthApiClient client,
         SessionLogger logger) {
         if (!state.HasAuthenticatedSession) {
-            return state;
+            return new AuthValidationResult(state, false);
         }
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -202,7 +204,7 @@ internal sealed class ActionFlowInitToStart3 : IAction {
         logger.WriteLine($"flow.validate_token.status={result.StatusCode}");
         logger.WriteLine($"flow.validate_token.success={result.IsSuccessStatusCode}");
         AuthStateSupport.LogSessionState(updatedState, logger);
-        return updatedState;
+        return new AuthValidationResult(updatedState, result.IsSuccessStatusCode);
     }
 
     private static async Task<HardwareProbeResult> ProbeHardwareInfoAsync(SessionLogger logger) {
@@ -250,6 +252,7 @@ internal sealed class ActionFlowInitToStart3 : IAction {
             hardwareInfo.SerialNumber,
             hardwareInfo.FirmwareVersion,
             hardwareInfo.MaxPacketLength,
+            maxBulkPacketLength: 0,
             userSessionId,
             cts.Token);
         var updatedState = AuthStateSupport.ApplyAuthResultToState(state, result, state.EmailAddress);
@@ -354,4 +357,6 @@ internal sealed class ActionFlowInitToStart3 : IAction {
         int SerialNumber,
         int FirmwareVersion,
         int MaxPacketLength);
+
+    private sealed record AuthValidationResult(NuraAuthState State, bool Success);
 }

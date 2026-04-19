@@ -7,12 +7,12 @@ namespace NuraLib.Devices;
 /// </summary>
 public class NuraDevice {
 
-    internal NuraDeviceConfig Config { get; }
+    internal NuraDeviceConfig Config { get; private set; } = null!;
 
     /// <summary>
     /// Gets static and capability information about the device.
     /// </summary>
-    public NuraDeviceInfo Info { get; }
+    public NuraDeviceInfo Info { get; private set; } = null!;
 
     /// <summary>
     /// Gets a value indicating whether a persistent device key is stored for this device.
@@ -21,6 +21,14 @@ public class NuraDevice {
 
 
     internal NuraDevice(NuraDeviceConfig config) {
+        ApplyConfig(config);
+    }
+
+    internal void UpdateConfig(NuraDeviceConfig config) {
+        ApplyConfig(config);
+    }
+
+    private void ApplyConfig(NuraDeviceConfig config) {
         Config = config;
         var deviceType = NuraDeviceCapabilities.ResolveType(config.Type);
         var capabilityInfo = NuraDeviceCapabilities.GetCapabilityInfo(deviceType, config.FirmwareVersion);

@@ -121,6 +121,7 @@ internal sealed class ActionAuthSessionStartNext : IAction {
 
         if (result.DecodedBody is not null) {
             logger.WriteLine($"auth.session_next.response.summary={AuthStateSupport.SummarizeSessionStartResponse(result.DecodedBody)}");
+            AutomatedActionTraceLogging.LogTrace("auth.session_next.trace", result.DecodedBody, logger);
             LogAutomatedEntryDetails(result.DecodedBody, logger);
         }
 

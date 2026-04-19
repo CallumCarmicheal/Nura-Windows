@@ -34,6 +34,16 @@ internal sealed class SessionLogger : IDisposable {
         WriteConsoleLine(text);
     }
 
+    public void BeginSection(string name) {
+        WriteLine();
+        WriteLine($"========== BEGIN {name} ==========");
+    }
+
+    public void EndSection(string name) {
+        WriteLine($"========== END {name} ==========");
+        WriteLine();
+    }
+
     public void Error(string message) {
         ThrowIfDisposed();
         _writer.WriteLine(message);
@@ -130,6 +140,13 @@ internal sealed class SessionLogger : IDisposable {
 
     private static bool TryWriteStatusLine(TextWriter writer, string text) {
         if (text.EndsWith(':') && !text.Contains('=')) {
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            writer.WriteLine(text);
+            return true;
+        }
+
+        if (text.StartsWith("========== ", StringComparison.Ordinal) &&
+            text.EndsWith(" ==========", StringComparison.Ordinal)) {
             Console.ForegroundColor = ConsoleColor.Magenta;
             writer.WriteLine(text);
             return true;
