@@ -280,6 +280,7 @@
             <Setter Property="BorderBrush" Value="#22FFFFFF" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Height" Value="42" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">

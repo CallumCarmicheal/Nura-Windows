@@ -1,17 +1,20 @@
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Runtime.CompilerServices;
 
 using NuraPopupWpf.Models;
 using NuraPopupWpf.Services;
 
 namespace NuraPopupWpf.Controls;
 
-
-
-
+/// <summary>
+/// Render the hearing profile morphing animation using either a cached bitmap or a retained-mode vector drawing, depending on the <see cref="UseBitmapRenderer"/> property.
+/// </summary>
 public sealed class ProfileVisualControl : FrameworkElement {
     private static readonly NuraProfileRenderer BitmapRenderer = new();
+    private const int BAND_COUNT = 6;
+    private const int SHAPE_SEGMENTS = 120;
 
     public static readonly DependencyProperty FromProfileProperty =
         DependencyProperty.Register(
@@ -55,6 +58,23 @@ public sealed class ProfileVisualControl : FrameworkElement {
             typeof(ProfileVisualControl),
             new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender, OnVisualInputChanged));
 
+    public static readonly DependencyProperty IsMorphingProperty =
+        DependencyProperty.Register(
+            nameof(IsMorphing),
+            typeof(bool),
+            typeof(ProfileVisualControl),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender, OnVisualInputChanged));
+
+    public static readonly DependencyProperty RenderShadowProperty =
+        DependencyProperty.Register(
+            nameof(RenderShadow),
+            typeof(bool),
+            typeof(ProfileVisualControl),
+            new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender, OnVisualInputChanged));
+
+    /// <summary>
+    /// Gradient colours for the hearing profile.
+    /// </summary>
     private static readonly GradientStopModel[] GradientStops = {
         new(0.00, 240, 127, 87),
         new(0.12, 236, 28, 36),
@@ -75,7 +95,51 @@ public sealed class ProfileVisualControl : FrameworkElement {
         double ImmersionValue,
         bool UseBitmapRenderer);
 
-    private CachedBitmapState? cachedBitmapState = null;
+    private sealed record CachedShapeState(
+        DrawingGroup? Drawing,
+        double DrawingSize,
+        ProfileModel? FromProfile,
+        ProfileModel? ToProfile,
+        double BlendProgress,
+        double ModeProgress,
+        double ImmersionValue,
+        bool IsMorphing);
+
+    private static readonly ConditionalWeakTable<ProfileModel, double[]> ProfileCurveCache = new();
+    private CachedBitmapState? bitmapState = null;
+    private static CachedShapeState? cachedShapeState = null;
+    private RetainedShapeState? shapeState = null;
+    private DrawingGroup? shapeDrawing = null;
+    private RetainedBandLayer[] bandLayers = Array.Empty<RetainedBandLayer>();
+    private EllipseGeometry? shadowGeometry; // TODO: Turn these into a record.
+    private EllipseGeometry? ambientFieldGeometry;
+    private EllipseGeometry? innerBloomGeometry;
+    private EllipseGeometry? outerGlowGeometry;
+    private RadialGradientBrush? shadowBrush;
+    private RadialGradientBrush? ambientFieldBrush;
+    private RadialGradientBrush? innerBloomBrush;
+    private RadialGradientBrush? outerGlowBrush;
+    private double[]? blendedCurveBuffer;
+    private double shapeSize;
+
+    private sealed record RetainedShapeState(
+        double DrawingSize,
+        ProfileModel? FromProfile,
+        ProfileModel? ToProfile,
+        double BlendProgress,
+        double ModeProgress,
+        double ImmersionValue,
+        bool IsMorphing,
+        bool RenderShadow);
+
+    private sealed class RetainedBandLayer {
+        public required PathFigure Figure { get; init; }
+        public required PolyLineSegment Segment { get; init; }
+        public required SolidColorBrush FillBrush { get; init; }
+        public required SolidColorBrush SoftFillBrush { get; init; }
+        public required SolidColorBrush EdgeBrush { get; init; }
+        public required Pen EdgePen { get; init; }
+    }
 
     public ProfileModel? FromProfile {
         get => (ProfileModel?)GetValue(FromProfileProperty);
@@ -105,6 +169,16 @@ public sealed class ProfileVisualControl : FrameworkElement {
     public bool UseBitmapRenderer {
         get => (bool)GetValue(UseBitmapRendererProperty);
         set => SetValue(UseBitmapRendererProperty, value);
+    }
+
+    public bool IsMorphing {
+        get => (bool)GetValue(IsMorphingProperty);
+        set => SetValue(IsMorphingProperty, value);
+    }
+
+    public bool RenderShadow {
+        get => (bool)GetValue(RenderShadowProperty);
+        set => SetValue(RenderShadowProperty, value);
     }
 
     protected override Size MeasureOverride(Size availableSize) {
@@ -143,124 +217,269 @@ public sealed class ProfileVisualControl : FrameworkElement {
             return;
         }
 
-        var normalizedCurve = BuildBlendedCurve(fromProfile, toProfile, Clamp(ProfileBlendProgress, 0.0, 1.0));
-        var modeProgress = Clamp(ModeProgress, 0.0, 1.0);
-        var (col1, col2) = GetProfileColours(Lerp(
-            Lerp(0.7, fromProfile.Colour, modeProgress),
-            Lerp(0.7, toProfile.Colour, modeProgress),
-            Clamp(ProfileBlendProgress, 0.0, 1.0)));
+        EnsureShapeResources(size);
+        CalculateShapeGeometry(fromProfile, toProfile, size);
 
-        var bandCount = 6;
-        var segments = 144;
-        // Match the bitmap renderer's normalized radius math:
-        // baseRadius 1.15 and profileScale 0.32..0.58 map to size / 4 in screen space.
-        var baseRadius = size * 0.284;
-        var profileScale = Lerp(0.0, Lerp(size * 0.078, size * 0.139, (ImmersionValue + 2.0) / 6.0), modeProgress);
-        var baseOpacity = Lerp(0.34, 0.48, modeProgress);
-        var alphaSink = 0.13;
-        var edgeGlowThickness = size * 0.0085;
-        var edgeGlowOpacity = Lerp(0.012, 0.020, modeProgress);
-        var fieldColour = LerpRgb(col1, col2, 0.5);
+        if (shapeDrawing is null) {
+            return;
+        }
 
-        var shadowBrush = new RadialGradientBrush {
-            Center = new Point(0.5, 0.5),
-            GradientOrigin = new Point(0.5, 0.5),
-            RadiusX = 0.5,
-            RadiusY = 0.5
-        };
-        shadowBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.0));
-        shadowBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.54));
-        shadowBrush.GradientStops.Add(new GradientStop(Color.FromArgb((byte)Math.Round(Lerp(34.0, 52.0, modeProgress)), 0, 0, 0), 0.79));
-        shadowBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0, 0, 0, 0), 1.0));
-        shadowBrush.Freeze();
-        drawingContext.DrawEllipse(shadowBrush, null, center, size * 0.41, size * 0.41);
+        drawingContext.PushTransform(new TranslateTransform(center.X - (size * 0.5), center.Y - (size * 0.5)));
+        drawingContext.DrawDrawing(shapeDrawing);
+        drawingContext.Pop();
+    }
 
-        // The bitmap renderer builds brightness from a soft alpha field around the ring,
-        // not only from the filled bands. Recreate that ambient energy here.
-        var ambientFieldBrush = new RadialGradientBrush {
-            Center = new Point(0.5, 0.5),
-            GradientOrigin = new Point(0.5, 0.5),
-            RadiusX = 0.5,
-            RadiusY = 0.5
-        };
-        ambientFieldBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0, (byte)Math.Round(fieldColour.R), (byte)Math.Round(fieldColour.G), (byte)Math.Round(fieldColour.B)), 0.0));
-        ambientFieldBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0, (byte)Math.Round(fieldColour.R), (byte)Math.Round(fieldColour.G), (byte)Math.Round(fieldColour.B)), 0.58));
-        ambientFieldBrush.GradientStops.Add(new GradientStop(Color.FromArgb((byte)Math.Round(Lerp(8.0, 14.0, modeProgress)), (byte)Math.Round(fieldColour.R), (byte)Math.Round(fieldColour.G), (byte)Math.Round(fieldColour.B)), 0.72));
-        ambientFieldBrush.GradientStops.Add(new GradientStop(Color.FromArgb((byte)Math.Round(Lerp(4.0, 8.0, modeProgress)), (byte)Math.Round(fieldColour.R), (byte)Math.Round(fieldColour.G), (byte)Math.Round(fieldColour.B)), 0.84));
-        ambientFieldBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0, (byte)Math.Round(fieldColour.R), (byte)Math.Round(fieldColour.G), (byte)Math.Round(fieldColour.B)), 1.0));
-        ambientFieldBrush.Freeze();
-        drawingContext.DrawEllipse(ambientFieldBrush, null, center, size * 0.39, size * 0.39);
+    private void EnsureShapeResources(double size) {
+        var drawingSize = Math.Max(1, Math.Round(size));
 
-        var innerBloomBrush = new RadialGradientBrush {
-            Center = new Point(0.5, 0.5),
-            GradientOrigin = new Point(0.5, 0.5),
-            RadiusX = 0.5,
-            RadiusY = 0.5
-        };
-        innerBloomBrush.GradientStops.Add(new GradientStop(Color.FromArgb((byte)Math.Round(Lerp(3.0, 6.0, modeProgress)), (byte)Math.Round(fieldColour.R), (byte)Math.Round(fieldColour.G), (byte)Math.Round(fieldColour.B)), 0.0));
-        innerBloomBrush.GradientStops.Add(new GradientStop(Color.FromArgb((byte)Math.Round(Lerp(1.0, 3.0, modeProgress)), (byte)Math.Round(fieldColour.R), (byte)Math.Round(fieldColour.G), (byte)Math.Round(fieldColour.B)), 0.38));
-        innerBloomBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0, (byte)Math.Round(fieldColour.R), (byte)Math.Round(fieldColour.G), (byte)Math.Round(fieldColour.B)), 0.78));
-        innerBloomBrush.Freeze();
-        drawingContext.DrawEllipse(innerBloomBrush, null, center, size * 0.32, size * 0.32);
+        // Check if we already have a drawing group, if so no need to recreate
+        //   the resources unless the size has changed.
+        if (shapeDrawing is not null && NearlyEqual(shapeSize, drawingSize)) {
+            return;
+        }
 
-        for (var band = 0; band < bandCount; band++) {
-            // Match the bitmap renderer exactly: 6 bands at 0/6 .. 5/6, not 0..1 inclusive.
-            var fi = band / (double)bandCount;
-            var brushColor = LerpRgb(col1, col2, fi);
-            var geometry = BuildBandGeometry(center, normalizedCurve, baseRadius, profileScale, fi, segments);
-            geometry.Freeze();
+        shapeSize = drawingSize;
+        shapeState = null;
+        shapeDrawing = new DrawingGroup();
+        bandLayers = new RetainedBandLayer[BAND_COUNT];
 
+        shadowGeometry = new EllipseGeometry();
+        ambientFieldGeometry = new EllipseGeometry();
+        innerBloomGeometry = new EllipseGeometry();
+        outerGlowGeometry = new EllipseGeometry();
 
+        shadowBrush = CreateMutableRadialBrush(new[] { 0.0, 0.60, 0.70, 0.82, 0.92, 0.98, 1.0 });
+        ambientFieldBrush = CreateMutableRadialBrush(new[] { 0.0, 0.58, 0.72, 0.84, 1.0 });
+        innerBloomBrush = CreateMutableRadialBrush(new[] { 0.0, 0.38, 0.78 });
+        outerGlowBrush = CreateMutableRadialBrush(new[] { 0.0, 0.55, 1.0 });
 
-            var fill = new SolidColorBrush(Color.FromArgb(
-                (byte)Math.Round(Clamp(baseOpacity - (fi * alphaSink), 0.0, 1.0) * 255.0),
-                (byte)Math.Round(brushColor.R),
-                (byte)Math.Round(brushColor.G),
-                (byte)Math.Round(brushColor.B)));
-            fill.Freeze();
+        shapeDrawing.Children.Add(new GeometryDrawing(shadowBrush, null, shadowGeometry));
+        shapeDrawing.Children.Add(new GeometryDrawing(ambientFieldBrush, null, ambientFieldGeometry));
+        shapeDrawing.Children.Add(new GeometryDrawing(innerBloomBrush, null, innerBloomGeometry));
 
-            var softFill = new SolidColorBrush(Color.FromArgb(
-                (byte)Math.Round(Clamp((baseOpacity * 0.09) - (fi * (alphaSink * 0.05)), 0.0, 1.0) * 255.0),
-                (byte)Math.Round(brushColor.R),
-                (byte)Math.Round(brushColor.G),
-                (byte)Math.Round(brushColor.B)));
-            softFill.Freeze();
+        for (var band = 0; band < BAND_COUNT; band++) {
+            var figure = new PathFigure { IsClosed = true, IsFilled = true };
+            var segment = new PolyLineSegment();
+            figure.Segments.Add(segment);
+            var geometry = new PathGeometry(new[] { figure });
 
-            var edgeBrush = new SolidColorBrush(Color.FromArgb(
-                (byte)Math.Round(Clamp(edgeGlowOpacity - (fi * 0.003), 0.0, 1.0) * 255.0),
-                (byte)Math.Round(brushColor.R),
-                (byte)Math.Round(brushColor.G),
-                (byte)Math.Round(brushColor.B)));
-            edgeBrush.Freeze();
-
-            var edgePen = new Pen(edgeBrush, edgeGlowThickness) {
+            var fillBrush = new SolidColorBrush(Colors.Transparent);
+            var softFillBrush = new SolidColorBrush(Colors.Transparent);
+            var edgeBrush = new SolidColorBrush(Colors.Transparent);
+            var edgePen = new Pen(edgeBrush, 0.0) {
                 StartLineCap = PenLineCap.Round,
                 EndLineCap = PenLineCap.Round,
                 LineJoin = PenLineJoin.Round
             };
-            edgePen.Freeze();
 
-            drawingContext.DrawGeometry(fill, null, geometry);
-            drawingContext.DrawGeometry(softFill, null, geometry);
-            drawingContext.DrawGeometry(null, edgePen, geometry);
+            shapeDrawing.Children.Add(new GeometryDrawing(fillBrush, null, geometry));
+            shapeDrawing.Children.Add(new GeometryDrawing(softFillBrush, null, geometry));
+            shapeDrawing.Children.Add(new GeometryDrawing(null, edgePen, geometry));
+
+            bandLayers[band] = new RetainedBandLayer {
+                Figure = figure,
+                Segment = segment,
+                FillBrush = fillBrush,
+                SoftFillBrush = softFillBrush,
+                EdgeBrush = edgeBrush,
+                EdgePen = edgePen
+            };
         }
 
-        var outerGlowBrush = new RadialGradientBrush {
-            Center = new Point(0.5, 0.5),
-            GradientOrigin = new Point(0.5, 0.5),
-            RadiusX = 0.5,
-            RadiusY = 0.5
-        };
-        outerGlowBrush.GradientStops.Add(new GradientStop(Color.FromArgb((byte)Math.Round(Lerp(4.0, 8.0, modeProgress)), (byte)Math.Round(col1.R), (byte)Math.Round(col1.G), (byte)Math.Round(col1.B)), 0.0));
-        outerGlowBrush.GradientStops.Add(new GradientStop(Color.FromArgb((byte)Math.Round(Lerp(2.0, 4.0, modeProgress)), (byte)Math.Round(Lerp(col1.R, col2.R, 0.5)), (byte)Math.Round(Lerp(col1.G, col2.G, 0.5)), (byte)Math.Round(Lerp(col1.B, col2.B, 0.5))), 0.55));
-        outerGlowBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0, (byte)Math.Round(col2.R), (byte)Math.Round(col2.G), (byte)Math.Round(col2.B)), 1.0));
-        outerGlowBrush.Freeze();
-        drawingContext.DrawEllipse(outerGlowBrush, null, center, size * 0.39, size * 0.39);
+        shapeDrawing.Children.Add(new GeometryDrawing(outerGlowBrush, null, outerGlowGeometry));
+    }
+
+    /// <summary>
+    /// Update the shape geometry and brushes based on the current profiles, 
+    /// blend progress, mode progress, and immersion value. 
+    /// 
+    /// This is the most expensive part of the rendering process, 
+    /// so we cache the results and only recalculate when necessary.
+    /// </summary>
+    /// <param name="fromProfile">Originating profile</param>
+    /// <param name="toProfile">Target profile</param>
+    /// <param name="size">Size of the shape (Width / Height, square)</param>
+    private void CalculateShapeGeometry(ProfileModel fromProfile, ProfileModel toProfile, double size) {
+        if (shapeDrawing is null
+            || shadowGeometry is null
+            || ambientFieldGeometry is null
+            || innerBloomGeometry is null
+            || outerGlowGeometry is null
+            || shadowBrush is null
+            || ambientFieldBrush is null
+            || innerBloomBrush is null
+            || outerGlowBrush is null) {
+            return;
+        }
+
+        var drawingSize = Math.Max(1, Math.Round(size));
+        var blend = Clamp(ProfileBlendProgress, 0.0, 1.0);
+        var modeProgress = Clamp(ModeProgress, 0.0, 1.0);
+        var immersion = ImmersionValue;
+        var isMorphing = IsMorphing;
+
+        if (shapeState is not null
+            && NearlyEqual(shapeState.DrawingSize, drawingSize)
+            && ReferenceEquals(shapeState.FromProfile, fromProfile)
+            && ReferenceEquals(shapeState.ToProfile, toProfile)
+            && NearlyEqual(shapeState.BlendProgress, blend)
+            && NearlyEqual(shapeState.ModeProgress, modeProgress)
+            && NearlyEqual(shapeState.ImmersionValue, immersion)
+            && shapeState.IsMorphing == isMorphing
+            && shapeState.RenderShadow == RenderShadow) {
+            return;
+        }
+
+        // Update the retained state to reuse later.
+        shapeState = new RetainedShapeState(drawingSize, fromProfile, toProfile, blend, modeProgress, immersion, isMorphing, RenderShadow);
+
+        var center = new Point(drawingSize * 0.5, drawingSize * 0.5);
+        var curve = BuildBlendedCurve(fromProfile, toProfile, blend);
+        var (col1, col2) = GetProfileColours(Lerp( a: Lerp(0.7, fromProfile.Colour, modeProgress),
+                                                   b: Lerp(0.7, toProfile.Colour, modeProgress),
+                                                   t: blend));
+
+        var baseRadius = drawingSize * 0.284;
+        var profileScale = Lerp(0.0, Lerp(drawingSize * 0.078, drawingSize * 0.139, (immersion + 2.0) / 6.0), modeProgress);
+        var baseOpacity = Lerp(0.34, 0.48, modeProgress);
+        var alphaSink = 0.13;
+        var edgeGlowThickness = drawingSize * (isMorphing ? 0.006 : 0.0085);
+        var edgeGlowOpacity = Lerp(isMorphing ? 0.008 : 0.012, isMorphing ? 0.014 : 0.020, modeProgress);
+        var fieldColour = LerpRgb(col1, col2, 0.5);
+
+        // Render the shadow first
+        UpdateEllipse(shadowGeometry, center, drawingSize * 0.394, drawingSize * 0.394);
+        UpdateMutableRadialBrush(
+            shadowBrush,
+            RenderShadow
+                ? [
+                    Color.FromArgb(0, 0, 0, 0),
+                    Color.FromArgb(0, 0, 0, 0),
+                    Color.FromArgb((byte)Math.Round(Lerp(10.0, 16.0, modeProgress)), 0, 0, 0),
+                    Color.FromArgb((byte)Math.Round(Lerp(6.0, 10.0, modeProgress)), 0, 0, 0),
+                    Color.FromArgb((byte)Math.Round(Lerp(3.0, 6.0, modeProgress)), 0, 0, 0),
+                    Color.FromArgb((byte)Math.Round(Lerp(1.0, 2.0, modeProgress)), 0, 0, 0),
+                    Color.FromArgb(0, 0, 0, 0)
+                ]
+                : [
+                    Color.FromArgb(0, 0, 0, 0),
+                    Color.FromArgb(0, 0, 0, 0),
+                    Color.FromArgb(0, 0, 0, 0),
+                    Color.FromArgb(0, 0, 0, 0),
+                    Color.FromArgb(0, 0, 0, 0),
+                    Color.FromArgb(0, 0, 0, 0),
+                    Color.FromArgb(0, 0, 0, 0)
+                ]);
+
+        // Render the ambient field (rings)
+        UpdateEllipse(ambientFieldGeometry, center, drawingSize * 0.39, drawingSize * 0.39);
+        UpdateMutableRadialBrush(
+            ambientFieldBrush,
+            [
+                Color.FromArgb(0, ToByte(fieldColour.R), ToByte(fieldColour.G), ToByte(fieldColour.B)),
+                Color.FromArgb(0, ToByte(fieldColour.R), ToByte(fieldColour.G), ToByte(fieldColour.B)),
+                Color.FromArgb((byte)Math.Round(Lerp(8.0, 14.0, modeProgress)), ToByte(fieldColour.R), ToByte(fieldColour.G), ToByte(fieldColour.B)),
+                Color.FromArgb((byte)Math.Round(Lerp(4.0, 8.0, modeProgress)), ToByte(fieldColour.R), ToByte(fieldColour.G), ToByte(fieldColour.B)),
+                Color.FromArgb(0, ToByte(fieldColour.R), ToByte(fieldColour.G), ToByte(fieldColour.B))
+            ]);
+
+        UpdateEllipse(innerBloomGeometry, center, drawingSize * 0.32, drawingSize * 0.32);
+        UpdateMutableRadialBrush(
+            innerBloomBrush,
+            [
+                Color.FromArgb((byte)Math.Round(Lerp(3.0, 6.0, modeProgress)), ToByte(fieldColour.R), ToByte(fieldColour.G), ToByte(fieldColour.B)),
+                Color.FromArgb((byte)Math.Round(Lerp(1.0, 3.0, modeProgress)), ToByte(fieldColour.R), ToByte(fieldColour.G), ToByte(fieldColour.B)),
+                Color.FromArgb(0, ToByte(fieldColour.R), ToByte(fieldColour.G), ToByte(fieldColour.B))
+            ]);
+
+        UpdateEllipse(outerGlowGeometry, center, drawingSize * 0.39, drawingSize * 0.39);
+        UpdateMutableRadialBrush(
+            outerGlowBrush,
+            [
+                Color.FromArgb((byte)Math.Round(Lerp(4.0, 8.0, modeProgress)), ToByte(col1.R), ToByte(col1.G), ToByte(col1.B)),
+                Color.FromArgb((byte)Math.Round(Lerp(2.0, 4.0, modeProgress)), ToByte(Lerp(col1.R, col2.R, 0.5)), ToByte(Lerp(col1.G, col2.G, 0.5)), ToByte(Lerp(col1.B, col2.B, 0.5))),
+                Color.FromArgb(0, ToByte(col2.R), ToByte(col2.G), ToByte(col2.B))
+            ]);
+
+        // Render the hearing bands (layered)
+        for (var band = 0; band < BAND_COUNT; band++) {
+            var fi = band / (double)BAND_COUNT;
+            var brushColor = LerpRgb(col1, col2, fi);
+            var layer = bandLayers[band];
+
+            layer.FillBrush.Color = Color.FromArgb(
+                (byte)Math.Round(Clamp(baseOpacity - (fi * alphaSink), 0.0, 1.0) * 255.0),
+                ToByte(brushColor.R),
+                ToByte(brushColor.G),
+                ToByte(brushColor.B));
+
+            layer.SoftFillBrush.Color = isMorphing
+                ? Colors.Transparent
+                : Color.FromArgb(
+                    (byte)Math.Round(Clamp((baseOpacity * 0.09) - (fi * (alphaSink * 0.05)), 0.0, 1.0) * 255.0),
+                    ToByte(brushColor.R),
+                    ToByte(brushColor.G),
+                    ToByte(brushColor.B));
+
+            layer.EdgeBrush.Color = Color.FromArgb(
+                (byte)Math.Round(Clamp(edgeGlowOpacity - (fi * 0.003), 0.0, 1.0) * 255.0),
+                ToByte(brushColor.R),
+                ToByte(brushColor.G),
+                ToByte(brushColor.B));
+            layer.EdgePen.Thickness = edgeGlowThickness;
+
+            UpdateBandGeometry(layer, center, curve, baseRadius, profileScale, fi);
+        }
+
+        return;
+    }
+
+    private void UpdateBandGeometry(
+        RetainedBandLayer layer,
+        Point center,
+        IReadOnlyList<double> curve,
+        double baseRadius,
+        double profileScale,
+        double bandFactor
+    ) {
+        EnsurePointCollectionSize(layer.Segment.Points, SHAPE_SEGMENTS);
+
+        for (var i = 0; i <= SHAPE_SEGMENTS; i++) {
+            var progress = i / (double)SHAPE_SEGMENTS;
+            var theta = progress * Math.PI * 2.0;
+            var profileValue = SampleWrappedCubic(curve, progress);
+            var radius = baseRadius + (profileValue * profileScale * bandFactor);
+            var point = new Point(
+                center.X + (Math.Sin(theta) * radius),
+                center.Y + (Math.Cos(theta) * radius));
+
+            if (i == 0) {
+                layer.Figure.StartPoint = point;
+            } else {
+                layer.Segment.Points[i - 1] = point;
+            }
+        }
+    }
+
+    private void ResetShapeResources() {
+        shapeState = null;
+        shapeDrawing = null;
+        bandLayers = Array.Empty<RetainedBandLayer>();
+        shadowGeometry = null;
+        ambientFieldGeometry = null;
+        innerBloomGeometry = null;
+        outerGlowGeometry = null;
+        shadowBrush = null;
+        ambientFieldBrush = null;
+        innerBloomBrush = null;
+        outerGlowBrush = null;
+        shapeSize = 0;
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo) {
         base.OnRenderSizeChanged(sizeInfo);
-        InvalidateBitmapCache();
+        InvalidateRenderCaches();
+        ResetShapeResources();
     }
 
     private BitmapSource GetOrCreateBitmap(ProfileModel fromProfile, ProfileModel toProfile, double size) {
@@ -270,16 +489,16 @@ public sealed class ProfileVisualControl : FrameworkElement {
         var immersion = ImmersionValue;
 
         // Check if we have already cached the bitmap
-        if (cachedBitmapState is not null 
-                && cachedBitmapState.Bitmap is not null
-                && cachedBitmapState.BitmapSize == renderSize
-                && ReferenceEquals(cachedBitmapState.FromProfile, fromProfile)
-                && ReferenceEquals(cachedBitmapState.ToProfile, toProfile)
-                && NearlyEqual(cachedBitmapState.BlendProgress, blend)
-                && NearlyEqual(cachedBitmapState.ModeProgress, mode)
-                && NearlyEqual(cachedBitmapState.ImmersionValue, immersion)
-                && cachedBitmapState.UseBitmapRenderer == UseBitmapRenderer) {
-            return cachedBitmapState.Bitmap;
+        if (bitmapState is not null 
+                && bitmapState.Bitmap is not null
+                && bitmapState.BitmapSize == renderSize
+                && ReferenceEquals(bitmapState.FromProfile, fromProfile)
+                && ReferenceEquals(bitmapState.ToProfile, toProfile)
+                && NearlyEqual(bitmapState.BlendProgress, blend)
+                && NearlyEqual(bitmapState.ModeProgress, mode)
+                && NearlyEqual(bitmapState.ImmersionValue, immersion)
+                && bitmapState.UseBitmapRenderer == UseBitmapRenderer) {
+            return bitmapState.Bitmap;
         }
 
         // Render the hearing profile onto a bitmap.
@@ -292,7 +511,7 @@ public sealed class ProfileVisualControl : FrameworkElement {
                 immersionValue: immersion);
 
         // Cache our new bitmap state.
-        cachedBitmapState = new CachedBitmapState(
+        bitmapState = new CachedBitmapState(
             Bitmap: bitmap, BitmapSize: renderSize,
             FromProfile: fromProfile, ToProfile: toProfile,
             BlendProgress: blend, ModeProgress: mode,
@@ -304,7 +523,16 @@ public sealed class ProfileVisualControl : FrameworkElement {
     }
 
     private void InvalidateBitmapCache() {
-        cachedBitmapState = new(null, 0, null, null, double.NaN, double.NaN, double.NaN, UseBitmapRenderer);
+        bitmapState = new(null, 0, null, null, double.NaN, double.NaN, double.NaN, UseBitmapRenderer);
+    }
+
+    private void InvalidateShapeCache() {
+        cachedShapeState = new(null, 0, null, null, double.NaN, double.NaN, double.NaN, false);
+    }
+
+    private void InvalidateRenderCaches() {
+        InvalidateBitmapCache();
+        InvalidateShapeCache();
     }
 
     private static bool NearlyEqual(double a, double b) => Math.Abs(a - b) < 0.0001;
@@ -314,49 +542,29 @@ public sealed class ProfileVisualControl : FrameworkElement {
             return;
         }
 
-        control.InvalidateBitmapCache();
+        control.InvalidateRenderCaches();
+        control.shapeState = null;
+        control.InvalidateVisual();
     }
 
-    private static StreamGeometry BuildBandGeometry(
-        Point center,
-        IReadOnlyList<double> curve,
-        double baseRadius,
-        double profileScale,
-        double bandFactor,
-        int segments) {
-        var geometry = new StreamGeometry();
-        using var context = geometry.Open();
+    private double[] BuildBlendedCurve(ProfileModel fromProfile, ProfileModel toProfile, double blend) {
+        var source = GetOrCreateProfileCurve(fromProfile);
+        var target = GetOrCreateProfileCurve(toProfile);
 
-        for (var i = 0; i <= segments; i++) {
-            var progress = i / (double)segments;
-            var theta = progress * Math.PI * 2.0;
-            var profileValue = SampleWrappedCubic(curve, progress);
-            var radius = baseRadius + (profileValue * profileScale * bandFactor);
-            var point = new Point(
-                center.X + (Math.Sin(theta) * radius),
-                center.Y + (Math.Cos(theta) * radius));
-
-            if (i == 0) {
-                context.BeginFigure(point, isFilled: true, isClosed: true);
-            } else {
-                context.LineTo(point, isStroked: true, isSmoothJoin: true);
-            }
+        blendedCurveBuffer ??= new double[target.Length];
+        if (blendedCurveBuffer.Length != target.Length) {
+            blendedCurveBuffer = new double[target.Length];
         }
-
-        return geometry;
-    }
-
-    private static double[] BuildBlendedCurve(ProfileModel fromProfile, ProfileModel toProfile, double blend) {
-        var source = BuildProfileCurve(fromProfile.LeftData, fromProfile.RightData);
-        var target = BuildProfileCurve(toProfile.LeftData, toProfile.RightData);
-        var values = new double[target.Length];
 
         for (var i = 0; i < target.Length; i++) {
-            values[i] = Lerp(source[i], target[i], blend);
+            blendedCurveBuffer[i] = Lerp(source[i], target[i], blend);
         }
 
-        return values;
+        return blendedCurveBuffer;
     }
+
+    private static double[] GetOrCreateProfileCurve(ProfileModel profile) =>
+        ProfileCurveCache.GetValue(profile, static key => BuildProfileCurve(key.LeftData, key.RightData));
 
     private static double[] BuildProfileCurve(IReadOnlyList<double> leftData, IReadOnlyList<double> rightData) {
         var left = MakeValues(leftData);
@@ -449,19 +657,44 @@ public sealed class ProfileVisualControl : FrameworkElement {
     private static Rgb LerpRgb(Rgb a, Rgb b, double t) =>
         new(Lerp(a.R, b.R, t), Lerp(a.G, b.G, t), Lerp(a.B, b.B, t));
 
-    // Removed because I couldn't quite get the saturation right.
-    private static Rgb BoostRgb(Rgb source, double saturationBoost, double brightnessBoost) {
-        var average = (source.R + source.G + source.B) / 3.0;
-        var saturated = new Rgb(
-            average + ((source.R - average) * saturationBoost),
-            average + ((source.G - average) * saturationBoost),
-            average + ((source.B - average) * saturationBoost));
+    private static RadialGradientBrush CreateMutableRadialBrush(double[] offsets) {
+        var brush = new RadialGradientBrush {
+            Center = new Point(0.5, 0.5),
+            GradientOrigin = new Point(0.5, 0.5),
+            RadiusX = 0.5,
+            RadiusY = 0.5
+        };
 
-        return new Rgb(
-            Clamp(saturated.R * brightnessBoost, 0.0, 255.0),
-            Clamp(saturated.G * brightnessBoost, 0.0, 255.0),
-            Clamp(saturated.B * brightnessBoost, 0.0, 255.0));
+        foreach (var offset in offsets) {
+            brush.GradientStops.Add(new GradientStop(Colors.Transparent, offset));
+        }
+
+        return brush;
     }
+
+    private static void UpdateMutableRadialBrush(RadialGradientBrush brush, Color[] colors) {
+        for (var i = 0; i < colors.Length && i < brush.GradientStops.Count; i++) {
+            brush.GradientStops[i].Color = colors[i];
+        }
+    }
+
+    private static void UpdateEllipse(EllipseGeometry geometry, Point center, double radiusX, double radiusY) {
+        geometry.Center = center;
+        geometry.RadiusX = radiusX;
+        geometry.RadiusY = radiusY;
+    }
+
+    private static void EnsurePointCollectionSize(PointCollection points, int count) {
+        while (points.Count < count) {
+            points.Add(default);
+        }
+
+        while (points.Count > count) {
+            points.RemoveAt(points.Count - 1);
+        }
+    }
+
+    private static byte ToByte(double value) => (byte)Math.Round(Clamp(value, 0.0, 255.0));
 
     private static double ShapeValue(double x) => (Math.Atan(x * 0.3) * 0.4) / (Math.PI / 2.0);
 

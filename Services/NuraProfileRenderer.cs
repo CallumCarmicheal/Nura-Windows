@@ -125,7 +125,7 @@ public sealed class NuraProfileRenderer {
     }
 
     public BitmapSource RenderThumbnail(ProfileModel profile, int size) {
-        return Render(profile, profile, 1.0, 1.0, size, 1.0);
+        return Render(profile, profile, profileBlendProgress: 1.0, personalisationProgress: 1.0, size, immersionValue: 1.0);
     }
 
     private static double[] BuildProfileCurve(IReadOnlyList<double> leftData, IReadOnlyList<double> rightData) {

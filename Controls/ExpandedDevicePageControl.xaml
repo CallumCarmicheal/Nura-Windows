@@ -75,27 +75,30 @@
                     <Border Width="380" Height="380" CornerRadius="190" Background="#08FF57B9" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     <Ellipse Width="332" Height="332" Stroke="#18FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     <Ellipse Width="272" Height="272" Stroke="#12FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <Grid Width="290" Height="290" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <!-- Sharp main layer -->
+                    
+                    <Grid Width="260" Height="260" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <local:ProfileVisualControl Opacity="1" FromProfile="{Binding VisualFromProfile}"
                                                     ToProfile="{Binding VisualToProfile}"
                                                     ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
                                                     ModeProgress="{Binding VisualModeProgress}"
                                                     ImmersionValue="{Binding CurrentImmersionValue}"
+                                                    IsMorphing="{Binding IsProfileMorphing}"
                                                     UseBitmapRenderer="{Binding UseBitmapProfileRenderer}" />
-
-                        <!-- Soft blurred underlay for the shape renderer -->
+                        
                         <local:ProfileVisualControl IsHitTestVisible="False"
-                                                    Opacity="0.3"
+                                                    Opacity="0.28"
                                                     FromProfile="{Binding VisualFromProfile}"
                                                     ToProfile="{Binding VisualToProfile}"
                                                     ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
                                                     ModeProgress="{Binding VisualModeProgress}"
                                                     ImmersionValue="{Binding CurrentImmersionValue}"
+                                                    IsMorphing="{Binding IsProfileMorphing}"
+                                                    RenderShadow="False"
                                                     UseBitmapRenderer="False"
                                                     RenderTransformOrigin="0.5,0.5">
+
                             <local:ProfileVisualControl.CacheMode>
-                                <BitmapCache />
+                                <BitmapCache RenderAtScale="0.8" />
                             </local:ProfileVisualControl.CacheMode>
 
                             <local:ProfileVisualControl.Style>
@@ -110,7 +113,7 @@
                             </local:ProfileVisualControl.Style>
 
                             <local:ProfileVisualControl.Effect>
-                                <BlurEffect Radius="12" RenderingBias="Quality"></BlurEffect>
+                                <BlurEffect Radius="10" RenderingBias="Performance" />
                             </local:ProfileVisualControl.Effect>
 
                             <local:ProfileVisualControl.RenderTransform>
@@ -120,20 +123,6 @@
                             </local:ProfileVisualControl.RenderTransform>
                         </local:ProfileVisualControl>
 
-
-                        <Button Command="{Binding ToggleProfileRendererCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip="Toggle renderer" FocusVisualStyle="{x:Null}">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="Transparent" />
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
-
-                        <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,10,0,0" Padding="10,5" CornerRadius="999" Background="#B8141414" BorderBrush="#22FFFFFF" BorderThickness="1" IsHitTestVisible="False">
-                            <TextBlock Text="{Binding ActiveProfileRendererLabel}"
-                                       Foreground="White" FontSize="11"
-                                       FontWeight="SemiBold" />
-                        </Border>
                     </Grid>
                 </Grid>
 

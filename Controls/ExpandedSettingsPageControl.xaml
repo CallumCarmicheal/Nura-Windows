@@ -47,6 +47,89 @@
                         <TextBlock Grid.Column="1" Text="0.9.0" Foreground="White" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" />
                     </Grid>
                 </Border>
+                <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,10,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Use bitmap renderer" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="{Binding ProfileRendererSubtitle}" Foreground="White" FontSize="13" TextWrapping="Wrap" 
+                                       d:Text="..." />
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1"
+                                      IsChecked="{Binding UseBitmapProfileRenderer, Mode=TwoWay}"
+                                      Style="{StaticResource SwitchToggleButtonStyle}" />
+                    </Grid>
+                </Border>
+                <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,10,0,0">
+                    <StackPanel>
+                        <Button Command="{Binding ExportHearingProfilesCommand}"
+                                Style="{StaticResource ValuePillButtonStyle}"
+                                HorizontalAlignment="Stretch"
+                                Padding="12,10">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock FontFamily="Segoe Fluent Icons"
+                                           FontWeight="Thin"
+                                           Text="&#xE72D;"
+                                           Foreground="#8AFF57B9"
+                                           FontSize="20"
+                                           Margin="0,0,8,0" 
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="Export Hearing Profiles"
+                                           Foreground="White"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="{Binding ExportStatusText}"
+                                   Margin="0,10,0,0"
+                                   Foreground="{StaticResource SubtleTextBrush}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="20" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Background="#22FFFFFF" Width="4" Margin="0,8" CornerRadius="4"></Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource InfoChipBorderStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="92" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Render size" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                                <TextBlock Text="PNG size in pixels. Min 4, max 12288." Foreground="White" FontSize="13" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                Background="#10FFFFFF"
+                BorderBrush="#22FFFFFF"
+                BorderThickness="1"
+                CornerRadius="24"
+                SnapsToDevicePixels="True"
+                Margin="20,0,0,0">
+                                <TextBox Text="{Binding ExportRenderSizeText, UpdateSourceTrigger=PropertyChanged}" d:Text="12288"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Foreground="White"
+                     Padding="16,8"
+                     TextAlignment="Center"
+                     VerticalContentAlignment="Center"
+                     PreviewTextInput="NumberOnly_PreviewTextInput"
+                     DataObject.Pasting="NumberOnly_Pasting" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
             </StackPanel>
         </Border>
 
@@ -81,7 +164,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="ANC" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                            <TextBlock Text="{Binding AncStatusText}" Foreground="White" FontSize="13" />
+                            <TextBlock Text="{Binding AncStatusText}" Foreground="White" FontSize="13" d:Text="..." />
                         </StackPanel>
                         <ToggleButton Grid.Column="1"
                                       IsChecked="{Binding AncEnabled, Mode=TwoWay}"
@@ -117,7 +200,7 @@
                                 Style="{StaticResource ValuePillButtonStyle}"
                                 HorizontalAlignment="Right"
                                 Padding="12,6">
-                            <TextBlock Margin="16,8" Text="{Binding DisplaySerial}" Foreground="White" FontFamily="Consolas" FontSize="12" />
+                            <TextBlock Margin="16,8" Text="{Binding DisplaySerial}" Foreground="White" FontFamily="Consolas" FontSize="12" d:Text="..." />
                         </Button>
                     </Grid>
                 </Border>
