@@ -1,6 +1,6 @@
 # NuraPopupWpf
 
-A WPF MVVM prototype of the compact-to-expanded Nura-style popup UI.
+A WPF based windows application to control your Nura devices using the NuraLib SDK.
 
 ## What is included
 
@@ -26,4 +26,5 @@ dotnet build
 ## Notes
 
 - The project targets `net9.0-windows`.
-- The renderer is a practical WPF recreation, not a byte-for-byte port of the original native implementation.
+- The renderer is a practical WPF recreation, it does not contain all of the features of the mobile app but due to the nature of the
+  API packet system connecting to through the desktop app it does phone home and run the provided packets so in theory it should also work with NuraNow devices. (Not tested yet)

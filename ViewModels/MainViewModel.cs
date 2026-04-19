@@ -1,27 +1,35 @@
-using System.Collections.ObjectModel;
-using System.Windows.Input;
-using System.Windows.Threading;
+using Microsoft.VisualBasic.FileIO;
 
 using NuraPopupWpf.Infrastructure;
 using NuraPopupWpf.Models;
 using NuraPopupWpf.Services;
 
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.Text.RegularExpressions;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
+
 namespace NuraPopupWpf.ViewModels;
 
 public sealed class MainViewModel : ObservableObject {
-    private const int AnimationFrameIntervalMs = 16;
+    private const int MinExportRenderSize = 4;
+    private const int MaxExportRenderSize = 12288;
 
     private readonly NuraProfileRenderer _renderer = new();
+    private readonly HearingProfileExportService _profileExportService = new();
     private readonly ObservableCollection<string> _modes = new ObservableCollection<string>(new[] { "Neutral", "Personalised" });
-    private readonly DispatcherTimer _animationTimer;
+    private readonly Stopwatch _animationStopwatch = new();
 
-    private DateTime _animationStartedAt;
     private TimeSpan _animationDuration = TimeSpan.FromMilliseconds(420);
     private ProfileModel? _animationFromProfile;
     private ProfileModel? _animationToProfile;
     private double _animationFromMode;
     private double _animationToMode;
     private bool _animateProfileBlend;
+    private bool _isAnimationRunning;
 
     private bool _isExpanded;
     private bool _isDevicePage = true;
@@ -40,7 +48,10 @@ public sealed class MainViewModel : ObservableObject {
     private bool _euVolumeLimiter;
     private bool _isSerialVisible;
     private bool _isCompactProfileSelectorOpen;
-    private bool _useBitmapProfileRenderer = true;
+    private bool _useBitmapProfileRenderer;
+    private bool _isProfileMorphing;
+    private string _exportRenderSizeText = "1024";
+    private string _exportStatusText = "Save transparent PNG renders for every profile on every available device.";
 
     public MainViewModel() {
         Profiles = BuildProfiles();
@@ -70,12 +81,9 @@ public sealed class MainViewModel : ObservableObject {
         ToggleSerialVisibilityCommand = new RelayCommand(_ => {
             IsSerialVisible = !IsSerialVisible;
         });
-        ToggleProfileRendererCommand = new RelayCommand(_ => {
-            UseBitmapProfileRenderer = !UseBitmapProfileRenderer;
+        ExportHearingProfilesCommand = new RelayCommand(_ => {
+            ExportHearingProfiles();
         });
-
-        _animationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(AnimationFrameIntervalMs) };
-        _animationTimer.Tick += OnAnimationTick;
     }
 
     public ObservableCollection<DeviceModel> Devices { get; }
@@ -94,7 +102,7 @@ public sealed class MainViewModel : ObservableObject {
 
     public ICommand ToggleSerialVisibilityCommand { get; }
 
-    public ICommand ToggleProfileRendererCommand { get; }
+    public ICommand ExportHearingProfilesCommand { get; }
 
     public bool IsExpanded {
         get => _isExpanded;
@@ -226,11 +234,31 @@ public sealed class MainViewModel : ObservableObject {
         set {
             if (SetProperty(ref _useBitmapProfileRenderer, value)) {
                 OnPropertyChanged(nameof(ActiveProfileRendererLabel));
+                OnPropertyChanged(nameof(ProfileRendererSubtitle));
             }
         }
     }
 
     public string ActiveProfileRendererLabel => UseBitmapProfileRenderer ? "Bitmap renderer" : "Shape renderer";
+
+    public string ProfileRendererSubtitle => UseBitmapProfileRenderer
+        ? "Use the nura renderer (slower)."
+        : "Use the Shape renderer (faster but not as accurate).";
+
+    public string ExportRenderSizeText {
+        get => _exportRenderSizeText;
+        set => SetProperty(ref _exportRenderSizeText, value);
+    }
+
+    public string ExportStatusText {
+        get => _exportStatusText;
+        private set => SetProperty(ref _exportStatusText, value);
+    }
+
+    public bool IsProfileMorphing {
+        get => _isProfileMorphing;
+        private set => SetProperty(ref _isProfileMorphing, value);
+    }
 
     public string DisplaySerial {
         get {
@@ -275,34 +303,39 @@ public sealed class MainViewModel : ObservableObject {
         var visualProfile = CaptureCurrentVisualProfile();
         var visualModeProgress = _visualModeProgress;
 
-        _animationTimer.Stop();
+        StopAnimationLoop();
         _animationFromProfile = visualProfile;
         _animationToProfile = _currentProfile;
         _animationFromMode = visualModeProgress;
         _animationToMode = _isPersonalised ? 1.0 : 0.0;
         _animateProfileBlend = profileChanged && !ReferenceEquals(visualProfile, _currentProfile);
+        IsProfileMorphing = _animateProfileBlend;
         _animationDuration = TimeSpan.FromMilliseconds(profileChanged ? 520 : 420);
-        _animationStartedAt = DateTime.UtcNow;
 
         if (!profileChanged && !modeChanged) {
             UpdateProfileImage();
             return;
         }
 
-        _animationTimer.Start();
+        StartAnimationLoop();
         RenderAnimationFrame(0.0);
     }
 
-    private void OnAnimationTick(object? sender, EventArgs e) {
-        var elapsed = DateTime.UtcNow - _animationStartedAt;
+    private void OnCompositionRendering(object? sender, EventArgs e) {
+        if (!_isAnimationRunning) {
+            return;
+        }
+
+        var elapsed = _animationStopwatch.Elapsed;
         var t = Math.Clamp(elapsed.TotalMilliseconds / _animationDuration.TotalMilliseconds, 0.0, 1.0);
         var eased = 1.0 - Math.Pow(1.0 - t, 3.0);
         RenderAnimationFrame(eased);
 
         if (t >= 1.0) {
-            _animationTimer.Stop();
+            StopAnimationLoop();
             _displayedProfile = _currentProfile;
             _displayedModeProgress = _isPersonalised ? 1.0 : 0.0;
+            IsProfileMorphing = false;
             VisualFromProfile = _currentProfile;
             VisualToProfile = _currentProfile;
             VisualProfileBlendProgress = 1.0;
@@ -361,13 +394,53 @@ public sealed class MainViewModel : ObservableObject {
     }
 
     private void UpdateProfileImage() {
-        _animationTimer.Stop();
+        StopAnimationLoop();
         _displayedProfile = _currentProfile;
         _displayedModeProgress = _isPersonalised ? 1.0 : 0.0;
+        IsProfileMorphing = false;
         VisualFromProfile = _currentProfile;
         VisualToProfile = _currentProfile;
         VisualProfileBlendProgress = 1.0;
         VisualModeProgress = _displayedModeProgress;
+    }
+
+    private void ExportHearingProfiles() {
+        var renderSize = GetClampedExportRenderSize();
+        var exportDirectory = _profileExportService.ExportProfiles(Devices, renderSize, UseBitmapProfileRenderer);
+        var directoryName = Path.GetFileName(exportDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        ExportStatusText = $"Exported transparent PNGs to renders/{directoryName}";
+        ExportRenderSizeText = renderSize.ToString();
+
+        var fullPath = Path.GetFullPath("renders/" + directoryName);
+        Process.Start("explorer.exe", fullPath);
+    }
+
+    private int GetClampedExportRenderSize() {
+        return int.TryParse(ExportRenderSizeText, out var parsed)
+            ? Math.Clamp(parsed, MinExportRenderSize, MaxExportRenderSize)
+            : 1024;
+    }
+
+    private void StartAnimationLoop() {
+        if (_isAnimationRunning) {
+            StopAnimationLoop();
+        }
+
+        _isAnimationRunning = true;
+        _animationStopwatch.Restart();
+        CompositionTarget.Rendering += OnCompositionRendering;
+    }
+
+    private void StopAnimationLoop() {
+        if (!_isAnimationRunning) {
+            return;
+        }
+
+        _isAnimationRunning = false;
+        _animationStopwatch.Stop();
+        _animationStopwatch.Reset();
+        CompositionTarget.Rendering -= OnCompositionRendering;
     }
 
     private IReadOnlyDictionary<string, ProfileModel> BuildProfiles() {
@@ -375,18 +448,18 @@ public sealed class MainViewModel : ObservableObject {
             ["Callum"] = new ProfileModel(
                 "Callum",
                 0.45,
-                new[] { 13.688053, 1.567564, 9.559364, -15.043674, -1.586667, 0.576336, -6.451581, -4.674792, -1.964447, -1.165475, -2.944404, -3.545126 },
-                new[] { 4.688053, 7.567564, 3.559364, 4.043674, 2.586667, 3.576336, -4.451581, -6.674792, 2.964447, -6.165475, -5.944404, 1.545126 }),
+                [13.688053, 1.567564, 9.559364, -15.043674, -1.586667, 0.576336, -6.451581, -4.674792, -1.964447, -1.165475, -2.944404, -3.545126],
+                [4.688053, 7.567564, 3.559364, 4.043674, 2.586667, 3.576336, -4.451581, -6.674792, 2.964447, -6.165475, -5.944404, 1.545126]),
             ["Studio"] = new ProfileModel(
                 "Studio",
                 0.10,
-                new[] { 1.2, 0.8, 0.4, -0.3, -0.7, -0.4, 0.2, 0.5, 0.1, -0.2, -0.5, -0.3 },
-                new[] { 1.0, 0.7, 0.5, -0.2, -0.6, -0.5, 0.1, 0.6, 0.2, -0.1, -0.4, -0.2 }),
+                [1.2, 0.8, 0.4, -0.3, -0.7, -0.4, 0.2, 0.5, 0.1, -0.2, -0.5, -0.3],
+                [1.0, 0.7, 0.5, -0.2, -0.6, -0.5, 0.1, 0.6, 0.2, -0.1, -0.4, -0.2]),
             ["Travel"] = new ProfileModel(
                 "Travel",
                 0.78,
-                new[] { 2.0, 1.8, 1.4, 0.7, 0.1, -0.8, -2.2, -4.5, -6.8, -7.5, -5.6, -3.2 },
-                new[] { 1.7, 1.5, 1.2, 0.5, -0.2, -1.2, -2.8, -5.0, -7.2, -7.8, -5.9, -3.5 }),
+                [2.0, 1.8, 1.4, 0.7, 0.1, -0.8, -2.2, -4.5, -6.8, -7.5, -5.6, -3.2],
+                [1.7, 1.5, 1.2, 0.5, -0.2, -1.2, -2.8, -5.0, -7.2, -7.8, -5.9, -3.5]),
         };
     }
 
@@ -400,4 +473,5 @@ public sealed class MainViewModel : ObservableObject {
     }
 
     private static double Lerp(double a, double b, double t) => a + ((b - a) * t);
+
 }

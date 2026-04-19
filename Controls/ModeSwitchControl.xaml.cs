@@ -61,11 +61,11 @@ public partial class ModeSwitchControl : UserControl {
         var baseWidth = Math.Max(0, (LayoutRoot.ActualWidth / 2.0) - (PillInset * 2.0));
         var targetX = isPersonalised ? LayoutRoot.ActualWidth / 2.0 : 0.0;
 
-        if (immediate) {
-            SlidingPill.BeginAnimation(WidthProperty, null);
-            PillTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        SlidingPill.BeginAnimation(WidthProperty, null);
+        SlidingPill.Width = baseWidth;
 
-            SlidingPill.Width = baseWidth;
+        if (immediate) {
+            PillTransform.BeginAnimation(TranslateTransform.XProperty, null);
             PillTransform.X = targetX;
             ApplyPillColorsImmediately(isPersonalised);
             return;
@@ -75,66 +75,27 @@ public partial class ModeSwitchControl : UserControl {
         var delta = targetX - currentX;
 
         if (Math.Abs(delta) < 0.5) {
-            SlidingPill.BeginAnimation(WidthProperty, null);
             PillTransform.BeginAnimation(TranslateTransform.XProperty, null);
-
-            SlidingPill.Width = baseWidth;
             PillTransform.X = targetX;
             AnimatePillColorsDirectional(isPersonalised);
             return;
         }
 
-        var stretchWidth = baseWidth + Math.Abs(delta);
-
         var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var tailSnap = new CubicEase { EasingMode = EasingMode.EaseIn };
-
-        var widthAnimation = new DoubleAnimationUsingKeyFrames();
+        var settleEase = new CubicEase { EasingMode = EasingMode.EaseInOut };
+        var overshoot = Math.Clamp(Math.Abs(delta) * 0.08, 7.0, 14.0) * Math.Sign(delta);
         var xAnimation = new DoubleAnimationUsingKeyFrames();
 
-        if (delta > 0) {
-            // Moving right:
-            // Hold left edge, stretch right, then move across and shrink back.
-            widthAnimation.KeyFrames.Add(
-                new EasingDoubleKeyFrame(stretchWidth, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(150))) {
-                    EasingFunction = easeOut
-                });
+        xAnimation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(targetX + overshoot, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(215))) {
+                EasingFunction = easeOut
+            });
 
-            widthAnimation.KeyFrames.Add(
-                new EasingDoubleKeyFrame(baseWidth, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(220))) {
-                    EasingFunction = tailSnap
-                });
+        xAnimation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(targetX, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(335))) {
+                EasingFunction = settleEase
+            });
 
-            xAnimation.KeyFrames.Add(
-                new EasingDoubleKeyFrame(currentX, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(150))));
-
-            xAnimation.KeyFrames.Add(
-                new EasingDoubleKeyFrame(targetX, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(220))) {
-                    EasingFunction = tailSnap
-                });
-        } else {
-            // Moving left:
-            // Jump left edge first, stretch back to the left, then shrink in at destination.
-            widthAnimation.KeyFrames.Add(
-                new EasingDoubleKeyFrame(stretchWidth, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(150))) {
-                    EasingFunction = easeOut
-                });
-
-            widthAnimation.KeyFrames.Add(
-                new EasingDoubleKeyFrame(baseWidth, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(220))) {
-                    EasingFunction = tailSnap
-                });
-
-            xAnimation.KeyFrames.Add(
-                new EasingDoubleKeyFrame(targetX, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(150))) {
-                    EasingFunction = easeOut
-                });
-
-            xAnimation.KeyFrames.Add(
-                new EasingDoubleKeyFrame(targetX, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(220))));
-        }
-
-        SlidingPill.BeginAnimation(WidthProperty, widthAnimation);
         PillTransform.BeginAnimation(TranslateTransform.XProperty, xAnimation);
 
         AnimatePillColorsDirectional(isPersonalised);

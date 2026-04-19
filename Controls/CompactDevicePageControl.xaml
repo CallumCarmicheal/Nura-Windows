@@ -155,19 +155,22 @@
                                                     ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
                                                     ModeProgress="{Binding VisualModeProgress}"
                                                     ImmersionValue="{Binding CurrentImmersionValue}"
+                                                    IsMorphing="{Binding IsProfileMorphing}"
                                                     UseBitmapRenderer="{Binding UseBitmapProfileRenderer}" />
 
                         <local:ProfileVisualControl IsHitTestVisible="False"
-                                                    Opacity="0.35"
+                                                    Opacity="0.26"
                                                     FromProfile="{Binding VisualFromProfile}"
                                                     ToProfile="{Binding VisualToProfile}"
                                                     ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
                                                     ModeProgress="{Binding VisualModeProgress}"
                                                     ImmersionValue="{Binding CurrentImmersionValue}"
+                                                    IsMorphing="{Binding IsProfileMorphing}"
+                                                    RenderShadow="False"
                                                     UseBitmapRenderer="False"
                                                     RenderTransformOrigin="0.5,0.5">
                             <local:ProfileVisualControl.CacheMode>
-                                <BitmapCache />
+                                <BitmapCache RenderAtScale="0.8" />
                             </local:ProfileVisualControl.CacheMode>
 
                             <local:ProfileVisualControl.Style>
@@ -177,12 +180,15 @@
                                         <DataTrigger Binding="{Binding UseBitmapProfileRenderer}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed" />
                                         </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsProfileMorphing}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </local:ProfileVisualControl.Style>
 
                             <local:ProfileVisualControl.Effect>
-                                <BlurEffect Radius="12" RenderingBias="Quality"></BlurEffect>
+                                <BlurEffect Radius="8" RenderingBias="Performance" />
                             </local:ProfileVisualControl.Effect>
 
                             <local:ProfileVisualControl.RenderTransform>
@@ -192,32 +198,6 @@
                             </local:ProfileVisualControl.RenderTransform>
                         </local:ProfileVisualControl>
 
-                        <Button Command="{Binding ToggleProfileRendererCommand}"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Cursor="Hand"
-                                ToolTip="Toggle renderer"
-                                FocusVisualStyle="{x:Null}">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="Transparent" />
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
-                        <Border HorizontalAlignment="Center"
-                                VerticalAlignment="Top"
-                                Margin="0,8,0,0"
-                                Padding="10,5"
-                                CornerRadius="999"
-                                Background="#B8141414"
-                                BorderBrush="#22FFFFFF"
-                                BorderThickness="1"
-                                IsHitTestVisible="False">
-                            <TextBlock Text="{Binding ActiveProfileRendererLabel}"
-                                       Foreground="White"
-                                       FontSize="11"
-                                       FontWeight="SemiBold" />
-                        </Border>
                     </Grid>
                 </Grid>
 
