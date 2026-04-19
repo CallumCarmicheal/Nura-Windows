@@ -41,15 +41,21 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
         _names[profileId] = name;
     }
 
+    private void EnsureProfilesSupported() {
+        if (!nuraDevice.Info.Supports(NuraSystemCapabilities.Profiles)) {
+            throw new NotSupportedException($"Profiles are not supported by device {nuraDevice.Info.TypeName} on firmware {nuraDevice.Info.FirmwareVersion}.");
+        }
+    }
+
     /// <summary>
     /// Actively retrieves the current profile identifier from the headset.
     /// </summary>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task<int?> RetrieveProfileIdAsync(CancellationToken cancellationToken = default) {
+        EnsureProfilesSupported();
         return nuraDevice.RetrieveCurrentProfileIdAsync(cancellationToken);
     }
 
-    [BluetoothImplementationRequired("Profiles", Notes = "Needs transport-backed current profile update on the headset.")]
     /// <summary>
     /// Sends a request to change the current profile on the headset.
     /// </summary>
@@ -57,8 +63,8 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task SetProfileIdAsync(int profileId, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
-        _ = profileId;
-        throw new NotImplementedException("Bluetooth current profile update has not been wired into NuraLib yet.");
+        EnsureProfilesSupported();
+        return nuraDevice.SetCurrentProfileIdAsync(profileId, cancellationToken);
     }
 
     /// <summary>
@@ -67,6 +73,7 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
     /// <param name="profileId">The profile identifier to read.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task<string?> RetrieveNameAsync(int profileId, CancellationToken cancellationToken = default) {
+        EnsureProfilesSupported();
         return nuraDevice.RetrieveProfileNameAsync(profileId, cancellationToken);
     }
 
@@ -76,12 +83,14 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
     /// <param name="profileCount">The number of profile slots to refresh, starting at zero.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task<IReadOnlyDictionary<int, string>> RefreshNamesAsync(int profileCount = 3, CancellationToken cancellationToken = default) {
+        EnsureProfilesSupported();
         return nuraDevice.RefreshProfileNamesAsync(profileCount, cancellationToken);
     }
 
     [BluetoothImplementationRequired("Profiles", Notes = "Needs transport-backed profile name update on the headset.")]
     public Task SetNameAsync(int profileId, string name, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureProfilesSupported();
         _ = profileId;
         _ = name ?? throw new ArgumentNullException(nameof(name));
         throw new NotImplementedException("Bluetooth profile name update has not been wired into NuraLib yet.");

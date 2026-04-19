@@ -3,4 +3,7 @@
     <Project Path="src/NuraLib/NuraLib.csproj" />
     <Project Path="src/NuraDesktopApp/NuraDesktopConsole.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NuraLib.Tests/NuraLib.Tests.csproj" />
+  </Folder>
 </Solution>

@@ -12,12 +12,14 @@ public sealed class NuraDeviceManager {
     private const string Source = nameof(NuraDeviceManager);
     private readonly NuraConfigState _state;
     private readonly NuraClientLogger _logger;
+    private readonly Auth.NuraAuthManager _authManager;
     private readonly List<NuraDevice> _all = [];
     private readonly List<ConnectedNuraDevice> _connected = [];
 
-    internal NuraDeviceManager(NuraConfigState state, NuraClientLogger logger) {
+    internal NuraDeviceManager(NuraConfigState state, NuraClientLogger logger, Auth.NuraAuthManager authManager) {
         _state = state;
         _logger = logger;
+        _authManager = authManager;
         ReloadKnownDevices();
     }
 
@@ -67,11 +69,10 @@ public sealed class NuraDeviceManager {
         }
 
         foreach (var device in devices) {
-            var connected = new ConnectedNuraDevice(device, _logger);
+            var connected = new ConnectedNuraDevice(_state, _authManager, device, _logger);
             _connected.Add(connected);
-            if (_all.All(existing => !string.Equals(existing.Info.Serial, connected.Info.Serial, StringComparison.OrdinalIgnoreCase))) {
-                _all.Add(connected);
-            }
+            _all.RemoveAll(existing => string.Equals(existing.Info.Serial, connected.Info.Serial, StringComparison.OrdinalIgnoreCase));
+            _all.Add(connected);
         }
     }
 

@@ -16,11 +16,17 @@ internal sealed class ActionAuthSessionLog : IAction {
 
         var endpoint = ArgumentReader.OptionalValue(args, "--endpoint") ?? "session/log";
         var sessionId = AuthStateSupport.ParseOptionalInt32(args, "--session");
-        IReadOnlyDictionary<string, object?>? payload = null;
+        var payloadPath = ArgumentReader.OptionalValue(args, "--payload-json");
+        Dictionary<string, object?>? payload = null;
+        if (!string.IsNullOrWhiteSpace(payloadPath)) {
+            payload = new Dictionary<string, object?>(
+                AutomatedReplayInputParser.ParsePayloadFile(payloadPath),
+                StringComparer.Ordinal);
+        }
+
         if (sessionId is not null) {
-            payload = new Dictionary<string, object?>(StringComparer.Ordinal) {
-                ["session"] = sessionId.Value
-            };
+            payload ??= new Dictionary<string, object?>(StringComparer.Ordinal);
+            payload["session"] = sessionId.Value;
         }
 
         logger.WriteLine($"auth.api_base={state.ApiBase}");
@@ -28,6 +34,9 @@ internal sealed class ActionAuthSessionLog : IAction {
         logger.WriteLine($"auth.session_log.endpoint={endpoint}");
         if (sessionId is not null) {
             logger.WriteLine($"auth.session_log.session={sessionId.Value}");
+        }
+        if (!string.IsNullOrWhiteSpace(payloadPath)) {
+            logger.WriteLine($"auth.session_log.payload_path={payloadPath}");
         }
         AuthStateSupport.LogSessionState(state, logger);
 

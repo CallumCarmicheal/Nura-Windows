@@ -107,12 +107,14 @@ internal sealed class NuraAuthApiClient : IDisposable {
         int serialNumber,
         int firmwareVersion,
         int maxPacketLength,
+        int maxBulkPacketLength,
         int userSessionId,
         CancellationToken cancellationToken) {
         var payload = new Dictionary<string, object?>(StringComparer.Ordinal) {
             ["serial"] = serialNumber,
             ["firmware_version"] = firmwareVersion,
             ["max_packet_length"] = maxPacketLength,
+            ["max_bulk_packet_length"] = maxBulkPacketLength,
             ["usid"] = userSessionId
         };
 
@@ -124,7 +126,7 @@ internal sealed class NuraAuthApiClient : IDisposable {
             cancellationToken);
 
         if (primaryResult.StatusCode != 404 ||
-            !state.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
+                !state.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
             return primaryResult;
         }
 
@@ -147,20 +149,67 @@ internal sealed class NuraAuthApiClient : IDisposable {
         string endpoint,
         int sessionId,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> packets,
+        IReadOnlyDictionary<string, object?>? additionalPayload,
         CancellationToken cancellationToken) {
         var payload = new Dictionary<string, object?>(StringComparer.Ordinal) {
             ["session"] = sessionId
         };
 
+        if (additionalPayload is not null) {
+            foreach (var entry in additionalPayload) {
+                payload[entry.Key] = entry.Value;
+            }
+        }
+
         if (packets.Count > 0) {
             payload["packets"] = packets.Cast<object?>().ToArray();
         }
 
-        return await SendAsync(
-            state,
-            NormalizeAutomatedEntryEndpoint(endpoint),
+        var normalizedEndpoint = NormalizeAutomatedEntryEndpoint(endpoint);
+        var requestState = PreferApiP3ForAutomatedEndpoint(state, normalizedEndpoint);
+        if (!ReferenceEquals(requestState, state) && !string.Equals(requestState.ApiBase, state.ApiBase, StringComparison.OrdinalIgnoreCase)) {
+            _logger.WriteLine($"auth.automated_entry.preferred_api_base={requestState.ApiBase}");
+        }
+
+        var primaryResult = await SendAsync(
+            requestState,
+            normalizedEndpoint,
             authenticated: true,
             payload,
+            cancellationToken);
+
+        if (primaryResult.StatusCode != 404 ||
+            !requestState.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
+            return primaryResult;
+        }
+
+        var retryState = requestState with {
+            ApiBase = "https://api-p3.nuraphone.com/"
+        };
+        _logger.WriteLine("auth.automated_entry.retry.reason=404_on_api_p1");
+        _logger.WriteLine($"auth.automated_entry.retry.endpoint={normalizedEndpoint}");
+        _logger.WriteLine($"auth.automated_entry.retry.api_base={retryState.ApiBase}");
+
+        return await SendAsync(
+            retryState,
+            normalizedEndpoint,
+            authenticated: true,
+            payload,
+            cancellationToken);
+    }
+
+    public async Task<AuthCallResult> AutomatedEntryAsync(
+        NuraAuthState state,
+        string endpoint,
+        int sessionId,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> packets,
+        CancellationToken cancellationToken) {
+        return await AutomatedEntryAsync(
+            state,
+            endpoint,
+            sessionId,
+            packets,
+            additionalPayload: null,
             cancellationToken);
     }
 
@@ -220,34 +269,42 @@ internal sealed class NuraAuthApiClient : IDisposable {
             request.Content = new StringContent(string.Empty, Encoding.UTF8, "text/plain");
         }
 
+        _logger.BeginSection($"HTTP {relativeUrl}");
         LogRequest(relativeUrl, authenticated, payload, payloadBytes);
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        var responseContentType = response.Content.Headers.ContentType?.MediaType;
+        try {
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            var responseContentType = response.Content.Headers.ContentType?.MediaType;
 
-        Dictionary<string, object?>? decodedBody = null;
-        object? decodedValue = null;
-        if (responseBytes.Length > 0 && string.Equals(responseContentType, "application/msgpack", StringComparison.OrdinalIgnoreCase)) {
-            decodedValue = MessagePackLite.Deserialize(responseBytes);
-            decodedBody = decodedValue as Dictionary<string, object?>;
+            Dictionary<string, object?>? decodedBody = null;
+            object? decodedValue = null;
+            if (responseBytes.Length > 0 && string.Equals(responseContentType, "application/msgpack", StringComparison.OrdinalIgnoreCase)) {
+                decodedValue = MessagePackLite.Deserialize(responseBytes);
+                decodedBody = decodedValue as Dictionary<string, object?>;
+            }
+
+            var rotatedAccessToken = TryGetHeader(response.Headers, response.Content.Headers, "access-token");
+            var rotatedClient = TryGetHeader(response.Headers, response.Content.Headers, "client");
+            var rotatedUid = TryGetHeader(response.Headers, response.Content.Headers, "uid");
+            var rotatedExpiry = TryGetHeader(response.Headers, response.Content.Headers, "expiry");
+
+            LogResponse(response, responseBytes, decodedValue, rotatedAccessToken, rotatedClient, rotatedUid, rotatedExpiry);
+
+            return new AuthCallResult(
+                StatusCode: (int)response.StatusCode,
+                IsSuccessStatusCode: response.IsSuccessStatusCode,
+                DecodedBody: decodedBody,
+                AccessToken: rotatedAccessToken,
+                ClientKey: rotatedClient,
+                AuthUid: rotatedUid,
+                ExpiryUnixSeconds: ParseNullableInt64(rotatedExpiry),
+                EffectiveApiBase: baseUri,
+                RawResponseBytes: responseBytes,
+                ResponseContentType: responseContentType);
+        } finally {
+            _logger.EndSection($"HTTP {relativeUrl}");
         }
-
-        var rotatedAccessToken = TryGetHeader(response.Headers, response.Content.Headers, "access-token");
-        var rotatedClient = TryGetHeader(response.Headers, response.Content.Headers, "client");
-        var rotatedUid = TryGetHeader(response.Headers, response.Content.Headers, "uid");
-        var rotatedExpiry = TryGetHeader(response.Headers, response.Content.Headers, "expiry");
-
-        LogResponse(response, responseBytes, decodedValue, rotatedAccessToken, rotatedClient, rotatedUid, rotatedExpiry);
-
-        return new AuthCallResult(
-            StatusCode: (int)response.StatusCode,
-            IsSuccessStatusCode: response.IsSuccessStatusCode,
-            DecodedBody: decodedBody,
-            AccessToken: rotatedAccessToken,
-            ClientKey: rotatedClient,
-            AuthUid: rotatedUid,
-            ExpiryUnixSeconds: ParseNullableInt64(rotatedExpiry));
     }
 
     private void LogRequest(
@@ -387,6 +444,21 @@ internal sealed class NuraAuthApiClient : IDisposable {
         return $"end_to_end/{trimmed}";
     }
 
+    private static NuraAuthState PreferApiP3ForAutomatedEndpoint(NuraAuthState state, string normalizedEndpoint) {
+        if (!state.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
+            return state;
+        }
+
+        if (normalizedEndpoint.StartsWith("end_to_end/change_language", StringComparison.OrdinalIgnoreCase) ||
+            normalizedEndpoint.StartsWith("end_to_end/upgrade", StringComparison.OrdinalIgnoreCase)) {
+            return state with {
+                ApiBase = "https://api-p3.nuraphone.com/"
+            };
+        }
+
+        return state;
+    }
+
     private static string? TryGetHeader(
         HttpResponseHeaders responseHeaders,
         HttpContentHeaders contentHeaders,
@@ -420,4 +492,7 @@ internal sealed record AuthCallResult(
     string? AccessToken,
     string? ClientKey,
     string? AuthUid,
-    long? ExpiryUnixSeconds);
+    long? ExpiryUnixSeconds,
+    string? EffectiveApiBase,
+    byte[] RawResponseBytes,
+    string? ResponseContentType);

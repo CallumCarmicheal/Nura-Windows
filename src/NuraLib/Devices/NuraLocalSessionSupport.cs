@@ -14,12 +14,11 @@ internal static class NuraLocalSessionSupport {
         IHeadsetTransport transport,
         NuraClientLogger logger,
         CancellationToken cancellationToken) {
-        var challengeResponse = await transport.ExchangeAsync(
-            NuraQueryFactory.CreateGenerateAppChallenge(),
-            GaiaCommandId.CryptoAppGenerateChallenge,
+        var challenge = await transport.ExecuteAsync(
+            NuraCommandFactory.CreateGenerateAppChallenge(),
+            runtime,
             cancellationToken);
 
-        var challenge = challengeResponse.PayloadExcludingStatus;
         if (challenge.Length != 16) {
             throw new InvalidOperationException($"unexpected challenge length: {challenge.Length}");
         }
@@ -28,12 +27,11 @@ internal static class NuraLocalSessionSupport {
         var gmac = runtime.Crypto.GenerateChallengeResponse(challenge);
         logger.Trace(Source, $"response.gmac.hex={HexEncoding.Format(gmac)}");
 
-        var validateResponse = await transport.ExchangeAsync(
-            NuraQueryFactory.CreateValidateAppChallenge(runtime, gmac),
-            GaiaCommandId.CryptoAppValidateChallengeResponse,
+        var headsetGmac = await transport.ExecuteAsync(
+            NuraCommandFactory.CreateValidateAppChallenge(runtime, gmac),
+            runtime,
             cancellationToken);
 
-        var headsetGmac = validateResponse.PayloadExcludingStatus;
         logger.Trace(Source, $"headset.gmac.hex={HexEncoding.Format(headsetGmac)}");
         var success = runtime.Crypto.ValidateResponse(headsetGmac);
         logger.Information(Source, $"handshake.success={success}");
@@ -46,14 +44,10 @@ internal static class NuraLocalSessionSupport {
         ConnectedNuraDeviceSession session,
         NuraClientLogger logger,
         CancellationToken cancellationToken) {
-        var profileResponse = await session.ExchangeAsync(
-            NuraQueryFactory.CreateGetCurrentProfileId(session.Runtime),
-            GaiaCommandId.ResponseAppEncryptedAuthenticated,
-            cancellationToken);
-
-        var profilePlain = NuraResponseParsers.DecryptAuthenticatedPlainPayload(session.Runtime, profileResponse);
-        logger.Trace(Source, $"current_profile.hex={HexEncoding.Format(profilePlain)}");
-        return NuraResponseParsers.DecodeCurrentProfileId(profilePlain);
+        var command = NuraCommandFactory.CreateGetCurrentProfileId();
+        var profileId = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"current_profile.command={command.Name}");
+        return profileId;
     }
 
     public static async Task<string> ReadProfileNameAsync(
@@ -61,14 +55,21 @@ internal static class NuraLocalSessionSupport {
         NuraClientLogger logger,
         int profileId,
         CancellationToken cancellationToken) {
-        var profileNameResponse = await session.ExchangeAsync(
-            NuraQueryFactory.CreateGetProfileName(session.Runtime, profileId),
-            GaiaCommandId.ResponseAppEncryptedAuthenticated,
-            cancellationToken);
+        var command = NuraCommandFactory.CreateGetProfileName(profileId);
+        var name = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"profile_name.command={command.Name}");
+        return name;
+    }
 
-        var profileNamePlain = NuraResponseParsers.DecryptAuthenticatedPlainPayload(session.Runtime, profileNameResponse);
-        logger.Trace(Source, $"profile_name.{profileId}.hex={HexEncoding.Format(profileNamePlain)}");
-        return NuraResponseParsers.DecodeProfileName(profileNamePlain);
+    public static async Task SelectProfileAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSelectProfile(profileId);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"profile_select.command={command.Name}");
+        logger.Trace(Source, $"profile_select.ack.hex={HexEncoding.Format(ack)}");
     }
 
     public static async Task<NuraAncState> ReadAncStateAsync(
@@ -76,14 +77,10 @@ internal static class NuraLocalSessionSupport {
         NuraClientLogger logger,
         int profileId,
         CancellationToken cancellationToken) {
-        var ancStateResponse = await session.ExchangeAsync(
-            NuraQueryFactory.CreateGetAncState(session.Runtime, profileId),
-            GaiaCommandId.ResponseAppEncryptedAuthenticated,
-            cancellationToken);
-
-        var ancStatePlain = NuraResponseParsers.DecryptAuthenticatedPlainPayload(session.Runtime, ancStateResponse);
-        logger.Trace(Source, $"anc_state.hex={HexEncoding.Format(ancStatePlain)}");
-        return NuraResponseParsers.DecodeAncState(ancStatePlain);
+        var command = NuraCommandFactory.CreateGetAncState(profileId);
+        var state = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"anc_state.command={command.Name}");
+        return state;
     }
 
     public static async Task SetAncStateAsync(
@@ -92,12 +89,192 @@ internal static class NuraLocalSessionSupport {
         int profileId,
         NuraAncState state,
         CancellationToken cancellationToken) {
-        var response = await session.ExchangeAsync(
-            NuraQueryFactory.CreateSetAncState(session.Runtime, profileId, state),
-            GaiaCommandId.ResponseAppEncryptedAuthenticated,
-            cancellationToken);
+        var command = NuraCommandFactory.CreateSetAncState(profileId, state);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"anc_set.command={command.Name}");
+        logger.Trace(Source, $"anc_set.ack.hex={HexEncoding.Format(ack)}");
+    }
 
-        var plain = NuraResponseParsers.DecryptAuthenticatedPlainPayload(session.Runtime, response);
-        logger.Trace(Source, $"anc_set.ack.hex={HexEncoding.Format(plain)}");
+    public static async Task SetTemporaryAncStateAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        bool ancEnabled,
+        bool passthroughEnabled,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetTemporaryAncState(ancEnabled, passthroughEnabled);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"anc_temporary_set.command={command.Name}");
+        logger.Trace(Source, $"anc_temporary_set.ack.hex={HexEncoding.Format(ack)}");
+    }
+
+    public static async Task<int> ReadAncLevelAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetAncLevel(profileId);
+        var level = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"anc_level.command={command.Name}");
+        return level;
+    }
+
+    public static async Task SetAncLevelAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        int level,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetAncLevel(profileId, level);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"anc_level_set.command={command.Name}");
+        logger.Trace(Source, $"anc_level_set.ack.hex={HexEncoding.Format(ack)}");
+    }
+
+    public static async Task<bool> ReadGlobalAncEnabledAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetGlobalAncEnabled(profileId);
+        var enabled = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"global_anc.command={command.Name}");
+        return enabled;
+    }
+
+    public static async Task SetGlobalAncEnabledAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        bool enabled,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetGlobalAncEnabled(profileId, enabled);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"global_anc_set.command={command.Name}");
+        logger.Trace(Source, $"global_anc_set.ack.hex={HexEncoding.Format(ack)}");
+    }
+
+    public static async Task<NuraPersonalisationMode> ReadKickitEnabledAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetKickitEnabled();
+        var mode = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"kickit_enabled.command={command.Name}");
+        return mode;
+    }
+
+    public static async Task SetKickitEnabledAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        NuraPersonalisationMode mode,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetKickitEnabled(mode == NuraPersonalisationMode.Personalised);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"kickit_enabled_set.command={command.Name}");
+        logger.Trace(Source, $"kickit_enabled_set.ack.hex={HexEncoding.Format(ack)}");
+    }
+
+    public static async Task<NuraKickitState> ReadKickitStateAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetKickitState(profileId);
+        var state = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"kickit_state.command={command.Name}");
+        return state;
+    }
+
+    public static async Task SetKickitStateAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        int? levelRaw,
+        bool? enabled,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetKickitState(profileId, levelRaw, enabled);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"kickit_state_set.command={command.Name}");
+        logger.Trace(Source, $"kickit_state_set.ack.hex={HexEncoding.Format(ack)}");
+    }
+
+    public static async Task<bool> ReadSpatialEnabledAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetSpatialState();
+        var enabled = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"spatial.command={command.Name}");
+        return enabled;
+    }
+
+    public static async Task SetSpatialEnabledAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        bool enabled,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetSpatialState(enabled);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"spatial_set.command={command.Name}");
+        logger.Trace(Source, $"spatial_set.ack.hex={HexEncoding.Format(ack)}");
+    }
+
+    public static async Task<NuraButtonConfiguration> ReadButtonConfigurationAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        NuraDeviceInfo deviceInfo,
+        int profileId,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetButtonConfiguration(deviceInfo, profileId);
+        var configuration = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"button_configuration.command={command.Name}");
+        return configuration;
+    }
+
+    public static async Task SetButtonConfigurationAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        NuraDeviceInfo deviceInfo,
+        int profileId,
+        NuraButtonConfiguration configuration,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetButtonConfiguration(deviceInfo, profileId, configuration);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"button_configuration_set.command={command.Name}");
+        logger.Trace(Source, $"button_configuration_set.ack.hex={HexEncoding.Format(ack)}");
+    }
+
+    public static async Task<NuraDialConfiguration> ReadDialConfigurationAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetDialConfiguration(profileId);
+        var configuration = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"dial_configuration.command={command.Name}");
+        return configuration;
+    }
+
+    public static async Task SetDialConfigurationAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        NuraDialConfiguration configuration,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetDialConfiguration(profileId, configuration);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"dial_configuration_set.command={command.Name}");
+        logger.Trace(Source, $"dial_configuration_set.ack.hex={HexEncoding.Format(ack)}");
+    }
+
+    public static async Task SetVoicePromptGainAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        NuraVoicePromptGain gain,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetVoicePromptGain(gain);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"voice_prompt_gain_set.command={command.Name}");
+        logger.Trace(Source, $"voice_prompt_gain_set.ack.hex={HexEncoding.Format(ack)}");
     }
 }

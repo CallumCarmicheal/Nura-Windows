@@ -5,7 +5,7 @@ namespace NuraLib.Devices;
 /// <summary>
 /// Holds the last known configuration values for a connected device.
 /// </summary>
-public sealed class NuraDeviceConfiguration {
+public sealed class NuraDeviceConfiguration(ConnectedNuraDevice nuraDevice) {
     private NuraButtonConfiguration? _touchButtons;
     private NuraDialConfiguration? _dial;
     private bool? _headDetectionEnabled;
@@ -55,17 +55,28 @@ public sealed class NuraDeviceConfiguration {
         _voicePromptGain = gain;
     }
 
-    [BluetoothImplementationRequired("Configuration", Notes = "Needs transport-backed touch button configuration retrieval from the headset.")]
+    private void EnsureInteractionCapability(NuraInteractionCapabilities capability, string featureName) {
+        if (!nuraDevice.Info.Supports(capability)) {
+            throw new NotSupportedException($"{featureName} is not supported by device {nuraDevice.Info.TypeName} on firmware {nuraDevice.Info.FirmwareVersion}.");
+        }
+    }
+
+    private void EnsureSystemCapability(NuraSystemCapabilities capability, string featureName) {
+        if (!nuraDevice.Info.Supports(capability)) {
+            throw new NotSupportedException($"{featureName} is not supported by device {nuraDevice.Info.TypeName} on firmware {nuraDevice.Info.FirmwareVersion}.");
+        }
+    }
+
     /// <summary>
     /// Actively retrieves the touch-button configuration from the headset.
     /// </summary>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task<NuraButtonConfiguration?> RetrieveTouchButtonsAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
-        throw new NotImplementedException("Bluetooth touch button configuration retrieval has not been wired into NuraLib yet.");
+        EnsureInteractionCapability(NuraInteractionCapabilities.TouchButtons, "Touch button configuration");
+        return nuraDevice.RetrieveTouchButtonsAsync(cancellationToken);
     }
 
-    [BluetoothImplementationRequired("Configuration", Notes = "Needs transport-backed touch button configuration update on the headset.")]
     /// <summary>
     /// Sends a request to change the touch-button configuration on the headset.
     /// </summary>
@@ -74,25 +85,27 @@ public sealed class NuraDeviceConfiguration {
     public Task SetTouchButtonsAsync(NuraButtonConfiguration configuration, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         _ = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        throw new NotImplementedException("Bluetooth touch button configuration update has not been wired into NuraLib yet.");
+        EnsureInteractionCapability(NuraInteractionCapabilities.TouchButtons, "Touch button configuration");
+        return nuraDevice.SetTouchButtonsAsync(configuration, cancellationToken);
     }
 
-    [BluetoothImplementationRequired("Configuration", Notes = "Needs transport-backed dial configuration retrieval from the headset.")]
     public Task<NuraDialConfiguration?> RetrieveDialAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
-        throw new NotImplementedException("Bluetooth dial configuration retrieval has not been wired into NuraLib yet.");
+        EnsureInteractionCapability(NuraInteractionCapabilities.Dial, "Dial configuration");
+        return nuraDevice.RetrieveDialAsync(cancellationToken);
     }
 
-    [BluetoothImplementationRequired("Configuration", Notes = "Needs transport-backed dial configuration update on the headset.")]
     public Task SetDialAsync(NuraDialConfiguration configuration, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         _ = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        throw new NotImplementedException("Bluetooth dial configuration update has not been wired into NuraLib yet.");
+        EnsureInteractionCapability(NuraInteractionCapabilities.Dial, "Dial configuration");
+        return nuraDevice.SetDialAsync(configuration, cancellationToken);
     }
 
     [BluetoothImplementationRequired("Configuration", Notes = "Needs transport-backed head detection retrieval from the headset.")]
     public Task<bool?> RetrieveHeadDetectionEnabledAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureInteractionCapability(NuraInteractionCapabilities.HeadDetection, "Head detection");
         throw new NotImplementedException("Bluetooth head detection retrieval has not been wired into NuraLib yet.");
     }
 
@@ -100,12 +113,14 @@ public sealed class NuraDeviceConfiguration {
     public Task SetHeadDetectionEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         _ = enabled;
+        EnsureInteractionCapability(NuraInteractionCapabilities.HeadDetection, "Head detection");
         throw new NotImplementedException("Bluetooth head detection update has not been wired into NuraLib yet.");
     }
 
     [BluetoothImplementationRequired("Configuration", Notes = "Needs transport-backed manual head detection retrieval from the headset.")]
     public Task<bool?> RetrieveManualHeadDetectionEnabledAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureInteractionCapability(NuraInteractionCapabilities.ManualHeadDetection, "Manual head detection");
         throw new NotImplementedException("Bluetooth manual head detection retrieval has not been wired into NuraLib yet.");
     }
 
@@ -113,12 +128,14 @@ public sealed class NuraDeviceConfiguration {
     public Task SetManualHeadDetectionEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         _ = enabled;
+        EnsureInteractionCapability(NuraInteractionCapabilities.ManualHeadDetection, "Manual head detection");
         throw new NotImplementedException("Bluetooth manual head detection update has not been wired into NuraLib yet.");
     }
 
     [BluetoothImplementationRequired("Configuration", Notes = "Needs transport-backed multipoint retrieval from the headset.")]
     public Task<bool?> RetrieveMultipointEnabledAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureSystemCapability(NuraSystemCapabilities.Multipoint, "Multipoint");
         throw new NotImplementedException("Bluetooth multipoint retrieval has not been wired into NuraLib yet.");
     }
 
@@ -126,6 +143,7 @@ public sealed class NuraDeviceConfiguration {
     public Task SetMultipointEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         _ = enabled;
+        EnsureSystemCapability(NuraSystemCapabilities.Multipoint, "Multipoint");
         throw new NotImplementedException("Bluetooth multipoint update has not been wired into NuraLib yet.");
     }
 
@@ -136,10 +154,10 @@ public sealed class NuraDeviceConfiguration {
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task<NuraVoicePromptGain?> RetrieveVoicePromptGainAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureInteractionCapability(NuraInteractionCapabilities.VoicePromptGain, "Voice prompt gain");
         throw new NotImplementedException("Bluetooth voice prompt gain retrieval has not been wired into NuraLib yet.");
     }
 
-    [BluetoothImplementationRequired("Configuration", Notes = "Needs transport-backed voice prompt gain update on the headset.")]
     /// <summary>
     /// Sends a request to change the voice prompt gain preset on the headset.
     /// </summary>
@@ -148,6 +166,7 @@ public sealed class NuraDeviceConfiguration {
     public Task SetVoicePromptGainAsync(NuraVoicePromptGain gain, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         _ = gain;
-        throw new NotImplementedException("Bluetooth voice prompt gain update has not been wired into NuraLib yet.");
+        EnsureInteractionCapability(NuraInteractionCapabilities.VoicePromptGain, "Voice prompt gain");
+        return nuraDevice.SetVoicePromptGainAsync(gain, cancellationToken);
     }
 }

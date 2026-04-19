@@ -23,8 +23,8 @@ public sealed class NuraClient {
         State.StateSaveRequested += HandleStateSaveRequested;
         _logger = new NuraClientLogger(EmitLog);
         Auth = new NuraAuthManager(State, _logger);
-        Devices = new NuraDeviceManager(State, _logger);
-        Monitoring = new NuraMonitoringManager();
+        Devices = new NuraDeviceManager(State, _logger, Auth);
+        Monitoring = new NuraMonitoringManager(Devices, _logger);
     }
 
     /// <summary>

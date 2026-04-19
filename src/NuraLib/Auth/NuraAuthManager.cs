@@ -122,6 +122,65 @@ public sealed class NuraAuthManager {
             message: "Refreshed authenticated session using validate-token.");
     }
 
+    internal string? CurrentAppEncKey => _runtime.AppEncKey;
+
+    internal async Task<int?> EnsureProvisioningReadyAsync(CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!HasStoredCredentials) {
+            return null;
+        }
+
+        await ResumeAsync(cancellationToken);
+        return _runtime.UserSessionId;
+    }
+
+    internal async Task<AuthCallResult> StartProvisioningSessionAsync(
+        int serialNumber,
+        int firmwareVersion,
+        int maxPacketLength,
+        CancellationToken cancellationToken) {
+        var userSessionId = await EnsureProvisioningReadyAsync(cancellationToken);
+        if (userSessionId is null) {
+            throw new InvalidOperationException("authenticated user session is required for provisioning");
+        }
+
+        var result = await _apiClient.SessionStartAsync(
+            BuildApiState(),
+            serialNumber,
+            firmwareVersion,
+            maxPacketLength,
+            userSessionId.Value,
+            cancellationToken);
+        ThrowForFailure(result, "Session-start request failed.");
+        PersistAuthentication(
+            emailAddress: _state.Configuration.Auth.UserEmail,
+            result,
+            fallbackAuthUid: _state.Configuration.Auth.AuthUid,
+            message: "Updated authentication during provisioning session-start.");
+        return result;
+    }
+
+    internal async Task<AuthCallResult> ContinueProvisioningAsync(
+        string endpoint,
+        int sessionId,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> packets,
+        CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = await _apiClient.AutomatedEntryAsync(
+            BuildApiState(),
+            endpoint,
+            sessionId,
+            packets,
+            cancellationToken);
+        ThrowForFailure(result, $"Provisioning continuation failed for endpoint {endpoint}.");
+        PersistAuthentication(
+            emailAddress: _state.Configuration.Auth.UserEmail,
+            result,
+            fallbackAuthUid: _state.Configuration.Auth.AuthUid,
+            message: $"Updated authentication during provisioning continuation {endpoint}.");
+        return result;
+    }
+
     private async Task EnsureAppSessionAsync(CancellationToken cancellationToken) {
         if (_runtime.AppSessionId is not null) {
             return;

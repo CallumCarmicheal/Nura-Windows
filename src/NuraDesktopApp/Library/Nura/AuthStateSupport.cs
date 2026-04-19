@@ -53,6 +53,7 @@ internal static class AuthStateSupport {
             result.ClientKey,
             result.AuthUid ?? fallbackAuthUid,
             result.ExpiryUnixSeconds,
+            result.EffectiveApiBase,
             responseBodyToStore,
             emailAddress,
             userSessionId: sessionState.UserSessionId,

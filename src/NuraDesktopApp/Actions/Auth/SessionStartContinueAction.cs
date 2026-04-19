@@ -50,6 +50,7 @@ internal sealed class ActionAuthSessionStartContinue : IAction {
 
         if (result.DecodedBody is not null) {
             logger.WriteLine($"auth.session_continue.response.summary={AuthStateSupport.SummarizeSessionStartResponse(result.DecodedBody)}");
+            AutomatedActionTraceLogging.LogTrace("auth.session_continue.trace", result.DecodedBody, logger);
             LogAutomatedEntryDetails(result.DecodedBody, logger);
         }
 

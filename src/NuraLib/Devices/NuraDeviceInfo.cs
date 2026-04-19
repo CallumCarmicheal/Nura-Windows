@@ -48,7 +48,7 @@ public sealed record class NuraDeviceInfo {
 
     public int MinimumFirmwareVersionForOfflineMode { get; init; }
 
-    public int DefaultImmersionLevel { get; init; }
+    public NuraImmersionLevel DefaultImmersionLevel { get; init; } = NuraImmersionLevel.Positive4;
 
     /// <summary>
     /// Gets the derived supported-feature flags for the device and firmware combination.
@@ -89,6 +89,21 @@ public sealed record class NuraDeviceInfo {
     /// Determines whether the device supports a specific feature flag.
     /// </summary>
     public bool Supports(NuraSupportedFeatures feature) => SupportedFeatures.HasFlag(feature);
+
+    /// <summary>
+    /// Determines whether the device supports a specific audio capability.
+    /// </summary>
+    public bool Supports(NuraAudioCapabilities capability) => AudioCapabilities.HasFlag(capability);
+
+    /// <summary>
+    /// Determines whether the device supports a specific interaction capability.
+    /// </summary>
+    public bool Supports(NuraInteractionCapabilities capability) => InteractionCapabilities.HasFlag(capability);
+
+    /// <summary>
+    /// Determines whether the device supports a specific system capability.
+    /// </summary>
+    public bool Supports(NuraSystemCapabilities capability) => SystemCapabilities.HasFlag(capability);
 
     /// <summary>
     /// Determines whether the device supports a specific touch-button gesture.
