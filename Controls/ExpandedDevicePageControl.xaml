@@ -33,29 +33,12 @@
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />-->
 
-                    <ListBox Grid.Column="1"
-                             HorizontalAlignment="Stretch"
-                             MinWidth="220"
-                             MaxWidth="420"
-                             ItemsSource="{Binding CurrentProfiles}"
-                             SelectedItem="{Binding CurrentProfile, Mode=TwoWay}"
-                             Style="{StaticResource SegmentedListBoxStyle}"
-                             ItemContainerStyle="{StaticResource SegmentedListBoxItemStyle}">
-                        <ListBox.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <UniformGrid Rows="1"
-                                             Columns="{Binding DataContext.CurrentProfileCount, RelativeSource={RelativeSource AncestorType=ListBox}}" />
-                            </ItemsPanelTemplate>
-                        </ListBox.ItemsPanel>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="{x:Type models:ProfileModel}">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <Image Source="{Binding Thumbnail}" Width="18" Height="18" HorizontalAlignment="Center" />
-                                    <TextBlock Text="{Binding Name}" HorizontalAlignment="Center" Margin="0,4,0,0" FontSize="11" Foreground="White" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <local:ExpandedProfileSelectorControl Grid.Column="1"
+                                                          HorizontalAlignment="Stretch"
+                                                          MinWidth="220"
+                                                          MaxWidth="420"
+                                                          Profiles="{Binding CurrentProfiles}"
+                                                          SelectedProfile="{Binding CurrentProfile, Mode=TwoWay}" />
 
                     <!--<Border Grid.Column="2"
                             Background="#10FFFFFF"
@@ -72,11 +55,27 @@
                 </Grid>
 
                 <Grid Grid.Row="1" Margin="0,18,0,18">
-                    <Border Width="380" Height="380" CornerRadius="190" Background="#08FF57B9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Ellipse Width="380"
+                             Height="380"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush Center="0.5,0.5"
+                                                 GradientOrigin="0.5,0.5"
+                                                 RadiusX="0.5"
+                                                 RadiusY="0.5">
+                                <GradientStop Color="#14FF57B9" Offset="0" />
+                                <GradientStop Color="#10FF57B9" Offset="0.42" />
+                                <GradientStop Color="#08FF57B9" Offset="0.66" />
+                                <GradientStop Color="#02FF57B9" Offset="0.86" />
+                                <GradientStop Color="#00FF57B9" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
                     <Ellipse Width="332" Height="332" Stroke="#18FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     <Ellipse Width="272" Height="272" Stroke="#12FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     
-                    <Grid Width="260" Height="260" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Grid Width="280" Height="280" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <local:ProfileVisualControl Opacity="1" FromProfile="{Binding VisualFromProfile}"
                                                     ToProfile="{Binding VisualToProfile}"
                                                     ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
