@@ -5,7 +5,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
              d:Width="420"
-             d:Height="62">
+             d:Height="54">
     <UserControl.Resources>
         <LinearGradientBrush x:Key="SlashHighlightBrush" StartPoint="0,0" EndPoint="0,1">
             <GradientStop Color="#FFD29FFF" Offset="0" />
@@ -39,18 +39,18 @@
     <Border Background="{StaticResource MutedSurfaceBrush}"
             BorderBrush="#22FFFFFF"
             BorderThickness="1"
-            CornerRadius="22"
-            Padding="6"
+            CornerRadius="20"
+            Padding="5"
             SnapsToDevicePixels="True">
         <Grid x:Name="LayoutRoot"
-              Height="46"
+              Height="38"
               ClipToBounds="False">
             <Canvas x:Name="SelectionCanvas"
                     IsHitTestVisible="False"
                     ClipToBounds="False">
                 <Border x:Name="ActivePill"
                         Width="0"
-                        Height="40"
+                        Height="34"
                         CornerRadius="0"
                         Background="{StaticResource AccentGradientBrush}"
                         Opacity="0.96"
@@ -68,8 +68,7 @@
                 </Border>
             </Canvas>
 
-            <Grid x:Name="SegmentGrid"
-                  ClipToBounds="False" />
+            <Grid x:Name="SegmentGrid" ClipToBounds="False" />
         </Grid>
     </Border>
 </UserControl>

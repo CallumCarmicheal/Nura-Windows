@@ -3,11 +3,28 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
+using NuraPopupWpf.ViewModels;
+
 namespace NuraPopupWpf.Controls;
 
 public partial class ExpandedSettingsPageControl : UserControl {
+    private DeviceProfilesPreviewController? _devicePreviewController;
+
     public ExpandedSettingsPageControl() {
         InitializeComponent();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e) {
+        _devicePreviewController ??= new DeviceProfilesPreviewController(
+            DeviceListBox,
+            () => (DataContext as MainViewModel)?.UseBitmapProfileRenderer ?? false);
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e) {
+        _devicePreviewController?.Dispose();
+        _devicePreviewController = null;
     }
 
 #region Number Only Text Field

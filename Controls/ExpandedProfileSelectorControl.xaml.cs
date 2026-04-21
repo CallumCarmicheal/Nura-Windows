@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 
 using NuraPopupWpf.Models;
 using NuraPopupWpf.ViewModels;
@@ -18,8 +19,8 @@ namespace NuraPopupWpf.Controls;
 public partial class ExpandedProfileSelectorControl : UserControl {
     private const double SlashCut = 14.0;
     private const double SeparatorWidth = 18.0;
-    private const double PillHeight = 40.0;
-    private const double ItemHeight = 40.0;
+    private const double PillHeight = 34.0;
+    private const double ItemHeight = 34.0;
     private const double PreviewPopupWidth = 232.0;
     private const double PreviewArrowSize = 14.0;
     private const double PreviewVerticalOffset = 12.0;
@@ -39,6 +40,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
     private bool _isPreviewAccentActive;
     private Button? _hoveredProfileButton;
     private ProfileModel? _hoveredProfile;
+    private DispatcherOperation? _pendingPreviewClose;
 
     private sealed class PreviewPopupState {
         public required Popup Popup { get; init; }
@@ -133,6 +135,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
 
         control.RebuildSelector();
         control.UpdateSelectionVisual(immediate: true);
+        control.ScheduleSelectionVisualUpdate();
     }
 
     private static void OnSelectedProfileChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) {
@@ -143,6 +146,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
     private void OnProfilesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) {
         RebuildSelector();
         UpdateSelectionVisual(immediate: true);
+        ScheduleSelectionVisualUpdate();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) {
@@ -181,6 +185,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
         }
 
         RefreshPreviewRenderers();
+        ScheduleSelectionVisualUpdate();
     }
 
     private Grid BuildProfileHost(ProfileModel profile, int count) {
@@ -466,7 +471,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
     private static TextBlock CreateSlashTextBlock(Brush foreground) {
         return new TextBlock {
             Text = "/",
-            FontSize = 26,
+            FontSize = 24,
             FontWeight = FontWeights.Medium,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -514,6 +519,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
 
         _hoveredProfileButton = button;
         _hoveredProfile = profile;
+        CancelPendingPreviewClose();
 
         if (!IsPreviewModifierActive()) {
             ClosePreview();
@@ -534,6 +540,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
 
         _hoveredProfileButton = button;
         _hoveredProfile = profile;
+        CancelPendingPreviewClose();
 
         if (!IsPreviewModifierActive()) {
             ClosePreview();
@@ -553,7 +560,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
             _hoveredProfile = null;
         }
 
-        ClosePreview();
+        SchedulePreviewCloseIfNeeded();
     }
 
     private void OnSelectorMouseLeave(object sender, System.Windows.Input.MouseEventArgs e) {
@@ -561,6 +568,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
     }
 
     private void ClosePreview() {
+        CancelPendingPreviewClose();
         if (_previewPopup is not null) {
             _previewPopup.ActiveBorder.BeginAnimation(OpacityProperty, null);
             _previewPopup.ActiveBorder.Opacity = 0;
@@ -570,6 +578,26 @@ public partial class ExpandedProfileSelectorControl : UserControl {
         }
 
         _isPreviewAccentActive = false;
+    }
+
+    private void SchedulePreviewCloseIfNeeded() {
+        CancelPendingPreviewClose();
+        _pendingPreviewClose = Dispatcher.BeginInvoke(() => {
+            _pendingPreviewClose = null;
+            if (_hoveredProfileButton is not null || IsMouseOver) {
+                return;
+            }
+
+            ClosePreview();
+        }, DispatcherPriority.Input);
+    }
+
+    private void CancelPendingPreviewClose() {
+        if (_pendingPreviewClose?.Status == DispatcherOperationStatus.Pending) {
+            _pendingPreviewClose.Abort();
+        }
+
+        _pendingPreviewClose = null;
     }
 
     private void RefreshPreviewRenderers() {
@@ -743,6 +771,7 @@ public partial class ExpandedProfileSelectorControl : UserControl {
 
         var selectedButton = _profileButtons[selectedIndex];
         if (selectedButton.ActualWidth <= 0 || selectedButton.ActualHeight <= 0) {
+            ScheduleSelectionVisualUpdate();
             return;
         }
 
@@ -780,6 +809,16 @@ public partial class ExpandedProfileSelectorControl : UserControl {
 
         UpdateButtonVisualStates(selectedIndex);
         UpdateSeparatorHighlights(selectedIndex, immediate);
+    }
+
+    private void ScheduleSelectionVisualUpdate() {
+        if (!IsLoaded) {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            () => UpdateSelectionVisual(immediate: true),
+            DispatcherPriority.Loaded);
     }
 
     private void UpdateButtonVisualStates(int selectedIndex) {

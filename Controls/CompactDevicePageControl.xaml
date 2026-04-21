@@ -238,7 +238,8 @@
         <Border Style="{StaticResource CardBorderStyle}" Margin="0,16,0,16">
             <StackPanel>
                 <TextBlock Text="DEVICES" Style="{StaticResource SectionTitleStyle}" />
-                <ListBox Margin="0,12,0,0"
+                <ListBox x:Name="DeviceListBox"
+                         Margin="0,12,0,0"
                          ItemsSource="{Binding Devices}"
                          SelectedItem="{Binding CurrentDevice, Mode=TwoWay}"
                          BorderThickness="0"
@@ -253,7 +254,26 @@
                     </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:DeviceModel}">
-                            <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="#55FFFFFF" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                    <Setter Property="Fill" Value="#FF64FFB0" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="SemiBold" />
+                            </StackPanel>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsConnected}" Value="False">
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -276,10 +296,10 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel>
                                 <TextBlock Text="Social mode" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                                <TextBlock Text="{Binding SocialModeText}" Foreground="White" FontSize="13" />
+                                <TextBlock Text="{Binding CurrentDevice.SocialModeText}" Foreground="White" FontSize="13" />
                             </StackPanel>
                             <ToggleButton Grid.Column="1"
-                                          IsChecked="{Binding SocialMode, Mode=TwoWay}"
+                                          IsChecked="{Binding CurrentDevice.SocialMode, Mode=TwoWay}"
                                           Style="{StaticResource SwitchToggleButtonStyle}" />
                         </Grid>
                     </Border>
@@ -291,10 +311,10 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel>
                                 <TextBlock Text="ANC" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                                <TextBlock Text="{Binding AncStatusText}" Foreground="White" FontSize="13" />
+                                <TextBlock Text="{Binding CurrentDevice.AncStatusText}" Foreground="White" FontSize="13" />
                             </StackPanel>
                             <ToggleButton Grid.Column="1"
-                                          IsChecked="{Binding AncEnabled, Mode=TwoWay}"
+                                          IsChecked="{Binding CurrentDevice.AncEnabled, Mode=TwoWay}"
                                           Style="{StaticResource SwitchToggleButtonStyle}" />
                         </Grid>
                     </Border>

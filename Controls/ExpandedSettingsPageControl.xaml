@@ -22,7 +22,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Name" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="Callum" Foreground="White" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding AccountNameDisplay}" Foreground="White" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" />
                     </Grid>
                 </Border>
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,16">
@@ -32,9 +32,28 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Email address" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="callum@example.com" Foreground="White" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding AccountEmailDisplay}" Foreground="White" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="Wrap" />
                     </Grid>
                 </Border>
+                <Button Margin="0,0,0,16"
+                        Command="{Binding LogoutAuthenticationCommand}"
+                        Style="{StaticResource ValuePillButtonStyle}"
+                        HorizontalAlignment="Stretch"
+                        Visibility="{Binding HasAuthenticatedWithNura, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="&#xE8AC;"
+                                   Foreground="#FFD18B9A"
+                                   FontSize="13"
+                                   Margin="0,0,8,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="Log out"
+                                   Foreground="White"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
 
                 <TextBlock Text="APP" Style="{StaticResource SectionTitleStyle}" />
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,12,0,0">
@@ -62,6 +81,46 @@
                                       IsChecked="{Binding UseBitmapProfileRenderer, Mode=TwoWay}"
                                       Style="{StaticResource SwitchToggleButtonStyle}" />
                     </Grid>
+                </Border>
+                <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,10,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Connect to Nura" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="{Binding ConnectToNuraSubtitle}" Foreground="White" FontSize="13" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1"
+                                      IsChecked="{Binding ConnectToNura, Mode=TwoWay}"
+                                      Style="{StaticResource SwitchToggleButtonStyle}" />
+                    </Grid>
+                </Border>
+                <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,10,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Anchor" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                        <TextBlock Text="{Binding WindowAnchorSubtitle}" Foreground="White" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0" />
+                        <ListBox Margin="0,10,0,0"
+                                 ItemsSource="{Binding WindowAnchorOptions}"
+                                 SelectedItem="{Binding SelectedWindowAnchorOption, Mode=TwoWay}"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                 ItemContainerStyle="{StaticResource PillListBoxItemStyle}">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Label}" Foreground="White" FontWeight="SemiBold" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
                 </Border>
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,10,0,0">
                     <StackPanel>
@@ -136,7 +195,8 @@
         <Border Grid.Column="2" Style="{StaticResource CardBorderStyle}">
             <StackPanel>
                 <TextBlock Text="SETTINGS" Style="{StaticResource SectionTitleStyle}" />
-                <ListBox Margin="0,12,0,16"
+                <ListBox x:Name="DeviceListBox"
+                         Margin="0,12,0,16"
                          ItemsSource="{Binding Devices}"
                          SelectedItem="{Binding CurrentDevice, Mode=TwoWay}"
                          BorderThickness="0"
@@ -151,7 +211,26 @@
                     </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:DeviceModel}">
-                            <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="#55FFFFFF" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                    <Setter Property="Fill" Value="#FF64FFB0" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="SemiBold" />
+                            </StackPanel>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsConnected}" Value="False">
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -164,10 +243,10 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="ANC" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                            <TextBlock Text="{Binding AncStatusText}" Foreground="White" FontSize="13" d:Text="..." />
+                            <TextBlock Text="{Binding CurrentDevice.AncStatusText}" Foreground="White" FontSize="13" d:Text="..." />
                         </StackPanel>
                         <ToggleButton Grid.Column="1"
-                                      IsChecked="{Binding AncEnabled, Mode=TwoWay}"
+                                      IsChecked="{Binding CurrentDevice.AncEnabled, Mode=TwoWay}"
                                       Style="{StaticResource SwitchToggleButtonStyle}" />
                     </Grid>
                 </Border>
@@ -183,7 +262,7 @@
                             <TextBlock Text="Protect output levels" Foreground="White" FontSize="13" />
                         </StackPanel>
                         <ToggleButton Grid.Column="1"
-                                      IsChecked="{Binding EuVolumeLimiter, Mode=TwoWay}"
+                                      IsChecked="{Binding CurrentDevice.EuVolumeLimiter, Mode=TwoWay}"
                                       Style="{StaticResource SwitchToggleButtonStyle}" />
                     </Grid>
                 </Border>
