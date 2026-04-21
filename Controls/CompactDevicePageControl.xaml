@@ -26,7 +26,7 @@
                                FontSize="14"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />-->
-                    
+
                     <Grid Grid.Column="1"
                           HorizontalAlignment="Stretch">
                         <ToggleButton x:Name="ProfileSelectorButton"
@@ -141,6 +141,28 @@
                 </Grid>
 
                 <Grid Grid.Row="1" Margin="0,18,0,18">
+                    <Grid x:Name="CompactHazeHost" Width="{Binding ActualHeight, RelativeSource={RelativeSource Self}}">
+                        <Ellipse HorizontalAlignment="Stretch"
+                                 VerticalAlignment="Stretch"
+                                 RenderTransformOrigin="0.5,0.5"
+                                 Visibility="{Binding ShowProfileBackgroundHaze, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush RadiusX="0.5" RadiusY="0.5" Center="0.5,0.5" GradientOrigin="0.5,0.5">
+                                    <GradientStop Color="#4ED946EF" Offset="0.0" />
+                                    <GradientStop Color="#32D946EF" Offset="0.18" />
+                                    <GradientStop Color="#18D946EF" Offset="0.36" />
+                                    <GradientStop Color="#06D946EF" Offset="0.60" />
+                                    <GradientStop Color="#00D946EF" Offset="0.78" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                            <Ellipse.Effect>
+                                <BlurEffect Radius="108" RenderingBias="Quality" />
+                            </Ellipse.Effect>
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform ScaleX="2.5" ScaleY="2" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                    </Grid>
                     <Ellipse Width="270"
                              Height="270"
                              HorizontalAlignment="Center"

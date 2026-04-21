@@ -32,6 +32,8 @@ public partial class ExpandedProfileSelectorControl : UserControl {
     private readonly List<Border> _iconGlows = new();
     private readonly List<FrameworkElement> _separatorTopHighlights = new();
     private readonly List<FrameworkElement> _separatorBottomHighlights = new();
+    private int? _selectionAnimationSourceIndex;
+    private int? _selectionAnimationTargetIndex;
     private MainViewModel? _viewModel;
     private bool _isLoaded;
     private PreviewPopupState? _previewPopup;
@@ -793,8 +795,12 @@ public partial class ExpandedProfileSelectorControl : UserControl {
         ActivePillTransform.BeginAnimation(TranslateTransform.XProperty, null);
         ActivePillTransform.X = currentX;
         if (immediate) {
+            _selectionAnimationSourceIndex = null;
+            _selectionAnimationTargetIndex = null;
             ActivePillTransform.X = targetX;
         } else {
+            _selectionAnimationSourceIndex = FindNearestProfileIndex(currentX);
+            _selectionAnimationTargetIndex = selectedIndex;
             var animation = new DoubleAnimation {
                 From = currentX,
                 To = targetX,
@@ -804,11 +810,20 @@ public partial class ExpandedProfileSelectorControl : UserControl {
                     Amplitude = 0.18
                 }
             };
+            animation.Completed += (_, _) => {
+                _selectionAnimationSourceIndex = null;
+                _selectionAnimationTargetIndex = null;
+                UpdateSeparatorHighlights(selectedIndex, immediate: false);
+            };
             ActivePillTransform.BeginAnimation(TranslateTransform.XProperty, animation);
         }
 
         UpdateButtonVisualStates(selectedIndex);
-        UpdateSeparatorHighlights(selectedIndex, immediate);
+        var separatorUpdateImmediate = immediate || (!immediate && _selectionAnimationSourceIndex.HasValue);
+        UpdateSeparatorHighlights(
+            selectedIndex,
+            separatorUpdateImmediate,
+            !immediate ? _selectionAnimationSourceIndex : null);
     }
 
     private void ScheduleSelectionVisualUpdate() {
@@ -841,13 +856,51 @@ public partial class ExpandedProfileSelectorControl : UserControl {
         }
     }
 
-    private void UpdateSeparatorHighlights(int selectedIndex, bool immediate) {
+    private int FindNearestProfileIndex(double pillX) {
+        if (_profileButtons.Count == 0) {
+            return -1;
+        }
+
+        var nearestIndex = 0;
+        var nearestDistance = double.MaxValue;
+
+        for (var i = 0; i < _profileButtons.Count; i++) {
+            var button = _profileButtons[i];
+            if (button.ActualWidth <= 0) {
+                continue;
+            }
+
+            var bounds = button.TransformToAncestor(LayoutRoot)
+                .TransformBounds(new Rect(0, 0, button.ActualWidth, button.ActualHeight));
+            var distance = Math.Abs(bounds.Left - pillX);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestIndex = i;
+            }
+        }
+
+        return nearestIndex;
+    }
+
+    private void UpdateSeparatorHighlights(int selectedIndex, bool immediate, int? additionalHighlightedIndex = null) {
         for (var i = 0; i < _separatorTopHighlights.Count; i++) {
-            var isHighlighted = i == selectedIndex || i + 1 == selectedIndex;
+            var isHighlighted = additionalHighlightedIndex.HasValue
+                ? IsSeparatorBetween(additionalHighlightedIndex.Value, selectedIndex, i)
+                : i == selectedIndex || i + 1 == selectedIndex;
             var targetOpacity = isHighlighted ? 1 : 0;
             AnimateOpacity(_separatorTopHighlights[i], targetOpacity, immediate);
             AnimateOpacity(_separatorBottomHighlights[i], targetOpacity, immediate);
         }
+    }
+
+    private static bool IsSeparatorBetween(int sourceIndex, int targetIndex, int separatorIndex) {
+        if (sourceIndex == targetIndex) {
+            return separatorIndex == targetIndex || separatorIndex + 1 == targetIndex;
+        }
+
+        var minIndex = Math.Min(sourceIndex, targetIndex);
+        var maxIndex = Math.Max(sourceIndex, targetIndex);
+        return separatorIndex >= minIndex && separatorIndex < maxIndex;
     }
 
     private static void AnimateOpacity(UIElement element, double targetOpacity, bool immediate) {

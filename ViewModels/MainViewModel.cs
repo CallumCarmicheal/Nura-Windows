@@ -50,6 +50,8 @@ public sealed class MainViewModel : ObservableObject {
     private bool _isCompactProfileSelectorOpen;
     private bool _useBitmapProfileRenderer;
     private bool _isProfileMorphing;
+    private bool _useRectangularProfileBands = false;
+    private bool _showProfileBackgroundHaze = true;
     private bool _hasCompletedAuthenticationGate;
     private bool _isAuthenticationCodeStep;
     private bool _connectToNura;
@@ -277,6 +279,16 @@ public sealed class MainViewModel : ObservableObject {
                 OnPropertyChanged(nameof(ProfileRendererSubtitle));
             }
         }
+    }
+
+    public bool UseRectangularProfileBands {
+        get => _useRectangularProfileBands;
+        set => SetProperty(ref _useRectangularProfileBands, value);
+    }
+
+    public bool ShowProfileBackgroundHaze {
+        get => _showProfileBackgroundHaze;
+        set => SetProperty(ref _showProfileBackgroundHaze, value);
     }
 
     public bool ConnectToNura {

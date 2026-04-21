@@ -22,6 +22,21 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
+                    <Border Grid.RowSpan="3"
+                            IsHitTestVisible="False">
+                        <Border.Background>
+                            <RadialGradientBrush Center="0.5,0.0"
+                                                 GradientOrigin="0.5,0.0"
+                                                 RadiusX="0.92"
+                                                 RadiusY="0.62">
+                                <GradientStop Color="#30D946EF" Offset="0.0" />
+                                <GradientStop Color="#1ED946EF" Offset="0.18" />
+                                <GradientStop Color="#0FD946EF" Offset="0.30" />
+                                <GradientStop Color="#04D946EF" Offset="0.42" />
+                                <GradientStop Color="#00D946EF" Offset="0.56" />
+                            </RadialGradientBrush>
+                        </Border.Background>
+                    </Border>
                     <Border Grid.Row="0"
                             Background="Transparent"
                             BorderBrush="#1FFFFFFF"
