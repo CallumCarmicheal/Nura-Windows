@@ -55,7 +55,30 @@
                 </Grid>
 
                 <Grid Grid.Row="1" Margin="0,0,0,18">
-                    <Ellipse Width="380"
+                    <Grid x:Name="HazeHost" Width="{Binding ActualHeight, RelativeSource={RelativeSource Self}}">
+                        <Ellipse HorizontalAlignment="Stretch"
+                                 VerticalAlignment="Stretch"
+                                 RenderTransformOrigin="0.5,0.5"
+                                 Visibility="{Binding ShowProfileBackgroundHaze, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush RadiusX="0.5" RadiusY="0.5" Center="0.5,0.5" GradientOrigin="0.5,0.5">
+                                    <GradientStop Color="#62D946EF" Offset="0.0" />
+                                    <GradientStop Color="#42D946EF" Offset="0.20" />
+                                    <GradientStop Color="#1ED946EF" Offset="0.40" />
+                                    <GradientStop Color="#08D946EF" Offset="0.64" />
+                                    <GradientStop Color="#00D946EF" Offset="0.82" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                            <Ellipse.Effect>
+                                <BlurEffect Radius="132" RenderingBias="Quality" />
+                            </Ellipse.Effect>
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform ScaleX="2" ScaleY="1.55" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                    </Grid>
+
+                    <Ellipse Width="480"
                              Height="380"
                              HorizontalAlignment="Center"
                              VerticalAlignment="Center">
@@ -72,10 +95,35 @@
                             </RadialGradientBrush>
                         </Ellipse.Fill>
                     </Ellipse>
-                    <Ellipse Width="332" Height="332" Stroke="#18FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <Ellipse Width="272" Height="272" Stroke="#12FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    
-                    <Grid Width="280" Height="280" HorizontalAlignment="Center" VerticalAlignment="Center">
+
+                    <Grid >
+                        <Ellipse Width="402" Height="402" Stroke="#18FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Ellipse Width="312" Height="312" Stroke="#12FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid 
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Center"
+                          Margin="18,32">
+                        <Border Height="312"
+                                Margin="4,0"
+                                CornerRadius="110"
+                                BorderBrush="#18FFFFFF"
+                                BorderThickness="1"
+                                Background="#00000000"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Center" />
+                        <Border Height="206"
+                                Margin="56,0"
+                                CornerRadius="78"
+                                BorderBrush="#12FFFFFF"
+                                BorderThickness="1"
+                                Background="#00000000"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid Width="360" Height="360" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <local:ProfileVisualControl Opacity="1" FromProfile="{Binding VisualFromProfile}"
                                                     ToProfile="{Binding VisualToProfile}"
                                                     ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
@@ -83,7 +131,7 @@
                                                     ImmersionValue="{Binding CurrentImmersionValue}"
                                                     IsMorphing="{Binding IsProfileMorphing}"
                                                     UseBitmapRenderer="{Binding UseBitmapProfileRenderer}" />
-                        
+
                         <local:ProfileVisualControl IsHitTestVisible="False"
                                                     Opacity="0.28"
                                                     FromProfile="{Binding VisualFromProfile}"
