@@ -12,10 +12,9 @@
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
-        SizeToContent="WidthAndHeight"
-        WindowStartupLocation="CenterScreen">
+        SizeToContent="Manual"
+        WindowStartupLocation="Manual">
     <Grid PreviewMouseLeftButtonDown="ShellBackground_OnPreviewMouseLeftButtonDown">
-        <Grid Margin="20">
             <Border Style="{StaticResource PopupShellStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -28,6 +27,7 @@
                             BorderBrush="#1FFFFFFF"
                             BorderThickness="0,0,0,1"
                             Padding="18,16"
+                            Visibility="{Binding IsAuthenticationPage, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                             MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
                         <controls:ShellHeaderControl />
                     </Border>
@@ -43,19 +43,22 @@
                                    BasedOn="{StaticResource ThinVerticalScrollBarStyle}" />
                         </ScrollViewer.Resources>
                         <Grid>
-                            <controls:DevicePageControl Visibility="{Binding IsDevicePage, Converter={StaticResource BoolToVisibilityConverter}}" />
-                            <controls:SettingsPageControl Visibility="{Binding IsSettingsPage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <controls:AuthenticationPageControl Visibility="{Binding IsAuthenticationPage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <Grid Visibility="{Binding IsAuthenticationPage, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                <controls:DevicePageControl Visibility="{Binding IsDevicePage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <controls:SettingsPageControl Visibility="{Binding IsSettingsPage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </Grid>
                         </Grid>
                     </ScrollViewer>
                     <Border Grid.Row="2"
                             BorderBrush="#1FFFFFFF"
                             BorderThickness="0,1,0,0"
                             Padding="16,12"
+                            Visibility="{Binding IsAuthenticationPage, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                             Height="64">
                         <controls:BottomNavigationControl />
                     </Border>
                 </Grid>
             </Border>
-        </Grid>
     </Grid>
 </Window>

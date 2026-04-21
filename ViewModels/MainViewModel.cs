@@ -20,8 +20,11 @@ public sealed class MainViewModel : ObservableObject {
 
     private readonly NuraProfileRenderer _renderer = new();
     private readonly HearingProfileExportService _profileExportService = new();
+    private readonly WindowPreferencesService _windowPreferencesService = new();
     private readonly ObservableCollection<string> _modes = new ObservableCollection<string>(new[] { "Neutral", "Personalised" });
+    private readonly ObservableCollection<WindowAnchorOption> _windowAnchorOptions;
     private readonly Stopwatch _animationStopwatch = new();
+    private readonly WindowPreferences _windowPreferences;
 
     private TimeSpan _animationDuration = TimeSpan.FromMilliseconds(420);
     private ProfileModel? _animationFromProfile;
@@ -43,17 +46,24 @@ public sealed class MainViewModel : ObservableObject {
     private double _visualModeProgress = 1.0;
     private int _immersionIndex = 3;
     private bool _isPersonalised = true;
-    private bool _socialMode;
-    private bool _ancEnabled = true;
-    private bool _euVolumeLimiter;
     private bool _isSerialVisible;
     private bool _isCompactProfileSelectorOpen;
     private bool _useBitmapProfileRenderer;
     private bool _isProfileMorphing;
+    private bool _hasCompletedAuthenticationGate;
+    private bool _isAuthenticationCodeStep;
+    private bool _connectToNura;
+    private bool _hasAuthenticatedWithNura;
+    private string _authenticationEmail = string.Empty;
+    private string _authenticationCode = string.Empty;
+    private string _authenticationStatusText = "Sign in with your email, or skip if your device keys are already stored locally.";
     private string _exportRenderSizeText = "1024";
     private string _exportStatusText = "Save transparent PNG renders for every profile on every available device.";
+    private WindowAnchorOption _selectedWindowAnchorOption = null!;
 
     public MainViewModel() {
+        _windowPreferences = _windowPreferencesService.Load();
+        _windowAnchorOptions = new ObservableCollection<WindowAnchorOption>(BuildWindowAnchorOptions());
         Profiles = BuildProfiles();
         Devices = new ObservableCollection<DeviceModel>(BuildDevices());
 
@@ -69,6 +79,7 @@ public sealed class MainViewModel : ObservableObject {
         _visualToProfile = _currentProfile;
         _visualProfileBlendProgress = 1.0;
         _visualModeProgress = 1.0;
+        _selectedWindowAnchorOption = _windowAnchorOptions.First(option => option.Mode == _windowPreferences.AnchorMode);
 
         ToggleExpandedCommand = new RelayCommand(_ => IsExpanded = !IsExpanded);
         ShowDevicePageCommand = new RelayCommand(_ => IsDevicePage = true);
@@ -81,6 +92,11 @@ public sealed class MainViewModel : ObservableObject {
         ToggleSerialVisibilityCommand = new RelayCommand(_ => {
             IsSerialVisible = !IsSerialVisible;
         });
+        SubmitAuthenticationEmailCommand = new RelayCommand(_ => SubmitAuthenticationEmail());
+        VerifyAuthenticationCodeCommand = new RelayCommand(_ => VerifyAuthenticationCode());
+        BackToAuthenticationEmailCommand = new RelayCommand(_ => BackToAuthenticationEmail());
+        SkipAuthenticationCommand = new RelayCommand(_ => SkipAuthentication());
+        LogoutAuthenticationCommand = new RelayCommand(_ => LogoutAuthentication());
         ExportHearingProfilesCommand = new RelayCommand(_ => {
             ExportHearingProfiles();
         });
@@ -92,6 +108,8 @@ public sealed class MainViewModel : ObservableObject {
 
     public ObservableCollection<string> Modes => _modes;
 
+    public ObservableCollection<WindowAnchorOption> WindowAnchorOptions => _windowAnchorOptions;
+
     public ICommand ToggleExpandedCommand { get; }
 
     public ICommand ShowDevicePageCommand { get; }
@@ -101,6 +119,16 @@ public sealed class MainViewModel : ObservableObject {
     public ICommand SelectModeCommand { get; }
 
     public ICommand ToggleSerialVisibilityCommand { get; }
+
+    public ICommand SubmitAuthenticationEmailCommand { get; }
+
+    public ICommand VerifyAuthenticationCodeCommand { get; }
+
+    public ICommand BackToAuthenticationEmailCommand { get; }
+
+    public ICommand SkipAuthenticationCommand { get; }
+
+    public ICommand LogoutAuthenticationCommand { get; }
 
     public ICommand ExportHearingProfilesCommand { get; }
 
@@ -120,6 +148,44 @@ public sealed class MainViewModel : ObservableObject {
 
     public bool IsSettingsPage => !IsDevicePage;
 
+    public bool HasCompletedAuthenticationGate {
+        get => _hasCompletedAuthenticationGate;
+        private set {
+            if (SetProperty(ref _hasCompletedAuthenticationGate, value)) {
+                OnPropertyChanged(nameof(IsAuthenticationPage));
+                OnPropertyChanged(nameof(IsMainAppVisible));
+            }
+        }
+    }
+
+    public bool IsAuthenticationPage => !HasCompletedAuthenticationGate;
+
+    public bool IsMainAppVisible => HasCompletedAuthenticationGate;
+
+    public bool IsAuthenticationCodeStep {
+        get => _isAuthenticationCodeStep;
+        private set => SetProperty(ref _isAuthenticationCodeStep, value);
+    }
+
+    public string AuthenticationEmail {
+        get => _authenticationEmail;
+        set {
+            if (SetProperty(ref _authenticationEmail, value)) {
+                OnPropertyChanged(nameof(AccountEmailDisplay));
+            }
+        }
+    }
+
+    public string AuthenticationCode {
+        get => _authenticationCode;
+        set => SetProperty(ref _authenticationCode, NormaliseAuthenticationCode(value));
+    }
+
+    public string AuthenticationStatusText {
+        get => _authenticationStatusText;
+        private set => SetProperty(ref _authenticationStatusText, value);
+    }
+
     public DeviceModel CurrentDevice {
         get => _currentDevice;
         set {
@@ -132,6 +198,7 @@ public sealed class MainViewModel : ObservableObject {
             OnPropertyChanged(nameof(CurrentBatteryText));
             OnPropertyChanged(nameof(DisplaySerial));
             OnPropertyChanged(nameof(CurrentSoftwareVersion));
+            OnPropertyChanged(nameof(CurrentConnectionStatusText));
             IsCompactProfileSelectorOpen = false;
 
             if (!_currentDevice.Profiles.Contains(_currentProfile)) {
@@ -187,33 +254,6 @@ public sealed class MainViewModel : ObservableObject {
 
     public int CurrentImmersionValue => new[] { -2, -1, 0, 1, 2, 3, 4 }[ImmersionIndex];
 
-    public bool SocialMode {
-        get => _socialMode;
-        set {
-            if (SetProperty(ref _socialMode, value)) {
-                OnPropertyChanged(nameof(SocialModeText));
-            }
-        }
-    }
-
-    public string SocialModeText => SocialMode ? "On" : "Off";
-
-    public bool AncEnabled {
-        get => _ancEnabled;
-        set {
-            if (SetProperty(ref _ancEnabled, value)) {
-                OnPropertyChanged(nameof(AncStatusText));
-            }
-        }
-    }
-
-    public string AncStatusText => AncEnabled ? "Active Noise Cancellation" : "Off";
-
-    public bool EuVolumeLimiter {
-        get => _euVolumeLimiter;
-        set => SetProperty(ref _euVolumeLimiter, value);
-    }
-
     public bool IsSerialVisible {
         get => _isSerialVisible;
         set {
@@ -239,11 +279,46 @@ public sealed class MainViewModel : ObservableObject {
         }
     }
 
+    public bool ConnectToNura {
+        get => _connectToNura;
+        set => SetProperty(ref _connectToNura, value);
+    }
+
+    public string ConnectToNuraSubtitle => "Devices on the nura-now subscription would need to phone home roughly every 30 days, enable this if you need to stop your device from locking.";
+
+    public bool HasAuthenticatedWithNura {
+        get => _hasAuthenticatedWithNura;
+        private set {
+            if (SetProperty(ref _hasAuthenticatedWithNura, value)) {
+                OnPropertyChanged(nameof(AccountNameDisplay));
+                OnPropertyChanged(nameof(AccountEmailDisplay));
+            }
+        }
+    }
+
     public string ActiveProfileRendererLabel => UseBitmapProfileRenderer ? "Bitmap renderer" : "Shape renderer";
 
     public string ProfileRendererSubtitle => UseBitmapProfileRenderer
         ? "Use the nura renderer (slower)."
         : "Use the Shape renderer (faster but not as accurate).";
+
+    public WindowAnchorOption SelectedWindowAnchorOption {
+        get => _selectedWindowAnchorOption;
+        set {
+            if (value is null || !SetProperty(ref _selectedWindowAnchorOption, value)) {
+                return;
+            }
+
+            _windowPreferences.AnchorMode = value.Mode;
+            _windowPreferencesService.Save(_windowPreferences);
+            OnPropertyChanged(nameof(WindowAnchorSubtitle));
+            OnPropertyChanged(nameof(SelectedWindowAnchorModeValue));
+        }
+    }
+
+    public WindowAnchorMode SelectedWindowAnchorModeValue => SelectedWindowAnchorOption.Mode;
+
+    public string WindowAnchorSubtitle => SelectedWindowAnchorOption.Subtitle;
 
     public string ExportRenderSizeText {
         get => _exportRenderSizeText;
@@ -276,6 +351,14 @@ public sealed class MainViewModel : ObservableObject {
     public string CurrentBatteryText => $"{CurrentDevice.BatteryLevel}%";
 
     public string CurrentSoftwareVersion => CurrentDevice.SoftwareVersion;
+
+    public string CurrentConnectionStatusText => CurrentDevice.ConnectionStatusText;
+
+    public string AccountNameDisplay => HasAuthenticatedWithNura ? "Connected account" : "Local device access";
+
+    public string AccountEmailDisplay => HasAuthenticatedWithNura
+        ? AuthenticationEmail
+        : "Offline mode using stored keys";
 
     public int CurrentProfileCount => CurrentProfiles.Count;
 
@@ -416,6 +499,73 @@ public sealed class MainViewModel : ObservableObject {
         Process.Start("explorer.exe", fullPath);
     }
 
+    private void SubmitAuthenticationEmail() {
+        var email = AuthenticationEmail.Trim();
+        if (!Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$")) {
+            AuthenticationStatusText = "Enter a valid email address to continue.";
+            return;
+        }
+
+        AuthenticationEmail = email;
+        AuthenticationCode = string.Empty;
+        IsAuthenticationCodeStep = true;
+        AuthenticationStatusText = $"Enter the 6-digit code sent to {email}.";
+    }
+
+    private void VerifyAuthenticationCode() {
+        AuthenticationCode = NormaliseAuthenticationCode(AuthenticationCode);
+        if (AuthenticationCode.Length != 6) {
+            AuthenticationStatusText = "Enter the full 6-digit verification code.";
+            return;
+        }
+
+        HasAuthenticatedWithNura = true;
+        ConnectToNura = true;
+        IsAuthenticationCodeStep = false;
+        HasCompletedAuthenticationGate = true;
+        AuthenticationStatusText = $"Connected to Nura as {AuthenticationEmail}.";
+    }
+
+    private void BackToAuthenticationEmail() {
+        IsAuthenticationCodeStep = false;
+        AuthenticationCode = string.Empty;
+        AuthenticationStatusText = "Update your email address or request a new 6-digit code.";
+    }
+
+    private void SkipAuthentication() {
+        AuthenticationCode = string.Empty;
+        IsAuthenticationCodeStep = false;
+        HasAuthenticatedWithNura = false;
+        HasCompletedAuthenticationGate = true;
+        AuthenticationStatusText = "Continuing with locally stored device keys.";
+    }
+
+    private void LogoutAuthentication() {
+        AuthenticationEmail = string.Empty;
+        AuthenticationCode = string.Empty;
+        ConnectToNura = false;
+        HasAuthenticatedWithNura = false;
+        IsAuthenticationCodeStep = false;
+        HasCompletedAuthenticationGate = false;
+        AuthenticationStatusText = "Sign in with your email, or skip if your device keys are already stored locally.";
+    }
+
+    public bool TryGetRememberedWindowPosition(out Point position) {
+        if (_windowPreferences.LastLeft.HasValue && _windowPreferences.LastTop.HasValue) {
+            position = new Point(_windowPreferences.LastLeft.Value, _windowPreferences.LastTop.Value);
+            return true;
+        }
+
+        position = default;
+        return false;
+    }
+
+    public void SaveRememberedWindowPosition(double left, double top) {
+        _windowPreferences.LastLeft = left;
+        _windowPreferences.LastTop = top;
+        _windowPreferencesService.Save(_windowPreferences);
+    }
+
     private int GetClampedExportRenderSize() {
         return int.TryParse(ExportRenderSizeText, out var parsed)
             ? Math.Clamp(parsed, MinExportRenderSize, MaxExportRenderSize)
@@ -467,9 +617,30 @@ public sealed class MainViewModel : ObservableObject {
         return new[]
         {
             new DeviceModel("nuratrue-pro", "NuraTrue Pro 523", 80, "NTP-523-84A2197", "3.2.1", new[] { Profiles["Callum"], Profiles["Studio"], Profiles["Travel"] }),
-            new DeviceModel("nuraloop", "NuraLoop", 62, "NLP-114-72C1901", "2.8.4", new[] { Profiles["Callum"], Profiles["Travel"] }),
-            new DeviceModel("nuraphone", "nuraphone", 47, "NPH-008-44B9036", "4.1.0", new[] { Profiles["Callum"] }),
+            new DeviceModel("nuraloop", "NuraLoop", 62, "NLP-114-72C1901", "2.8.4", new[] { Profiles["Callum"], Profiles["Travel"] }, isConnected: false, socialMode: true, ancEnabled: false, euVolumeLimiter: true),
+            new DeviceModel("nuraphone", "nuraphone", 47, "NPH-008-44B9036", "4.1.0", new[] { Profiles["Callum"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false),
         };
+    }
+
+    private static IEnumerable<WindowAnchorOption> BuildWindowAnchorOptions() {
+        yield return new WindowAnchorOption(
+            WindowAnchorMode.Taskbar,
+            "Taskbar",
+            "Open near the taskbar and expand away from it.");
+
+        yield return new WindowAnchorOption(
+            WindowAnchorMode.RememberLastPosition,
+            "Remember last position",
+            "Reopen where the window was last placed.");
+
+        yield return new WindowAnchorOption(
+            WindowAnchorMode.Center,
+            "Center",
+            "Open mid-screen and keep expansion centered.");
+    }
+
+    private static string NormaliseAuthenticationCode(string? value) {
+        return new string((value ?? string.Empty).Where(char.IsDigit).Take(6).ToArray());
     }
 
     private static double Lerp(double a, double b, double t) => a + ((b - a) * t);

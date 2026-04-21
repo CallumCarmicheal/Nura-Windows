@@ -33,12 +33,12 @@
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />-->
 
-                    <local:ExpandedProfileSelectorControl Grid.Column="1"
+                    <!--<local:ExpandedProfileSelectorControl Grid.Column="1"
                                                           HorizontalAlignment="Stretch"
                                                           MinWidth="220"
                                                           MaxWidth="420"
                                                           Profiles="{Binding CurrentProfiles}"
-                                                          SelectedProfile="{Binding CurrentProfile, Mode=TwoWay}" />
+                                                          SelectedProfile="{Binding CurrentProfile, Mode=TwoWay}" />-->
 
                     <!--<Border Grid.Column="2"
                             Background="#10FFFFFF"
@@ -54,7 +54,7 @@
                     </Border>-->
                 </Grid>
 
-                <Grid Grid.Row="1" Margin="0,18,0,18">
+                <Grid Grid.Row="1" Margin="0,0,0,18">
                     <Ellipse Width="380"
                              Height="380"
                              HorizontalAlignment="Center"
@@ -148,7 +148,8 @@
             <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="DEVICES" Style="{StaticResource SectionTitleStyle}" />
-                    <ListBox Margin="0,12,0,0"
+                    <ListBox x:Name="DeviceListBox"
+                             Margin="0,12,0,0"
                              ItemsSource="{Binding Devices}"
                              SelectedItem="{Binding CurrentDevice, Mode=TwoWay}"
                              BorderThickness="0"
@@ -156,10 +157,41 @@
                              ItemContainerStyle="{StaticResource DeviceRailListBoxItemStyle}">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type models:DeviceModel}">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding BatteryLevel, StringFormat={}{0}% battery}" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,4,0,0" />
-                                </StackPanel>
+                                <Grid>
+                                    <Grid.Style>
+                                        <Style TargetType="Grid">
+                                            <Setter Property="Opacity" Value="1" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsConnected}" Value="False">
+                                                    <Setter Property="Opacity" Value="0.54" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Grid.Style>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Width="10" Height="10" Margin="0,2,10,0" VerticalAlignment="Top">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="#55FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                        <Setter Property="Fill" Value="#FF64FFB0" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding DeviceStatusSummary, Mode=OneWay}"
+                                                   Foreground="{StaticResource SubtleTextBrush}"
+                                                   FontSize="12"
+                                                   Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -182,10 +214,10 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="Social mode" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                                    <TextBlock Text="{Binding SocialModeText}" Foreground="White" FontSize="13" />
+                                    <TextBlock Text="{Binding CurrentDevice.SocialModeText}" Foreground="White" FontSize="13" />
                                 </StackPanel>
                                 <ToggleButton Grid.Column="1"
-                                              IsChecked="{Binding SocialMode, Mode=TwoWay}"
+                                              IsChecked="{Binding CurrentDevice.SocialMode, Mode=TwoWay}"
                                               Style="{StaticResource SwitchToggleButtonStyle}" />
                             </Grid>
                         </Border>
@@ -197,10 +229,10 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="ANC" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                                    <TextBlock Text="{Binding AncStatusText}" Foreground="White" FontSize="13" />
+                                    <TextBlock Text="{Binding CurrentDevice.AncStatusText}" Foreground="White" FontSize="13" />
                                 </StackPanel>
                                 <ToggleButton Grid.Column="1"
-                                              IsChecked="{Binding AncEnabled, Mode=TwoWay}"
+                                              IsChecked="{Binding CurrentDevice.AncEnabled, Mode=TwoWay}"
                                               Style="{StaticResource SwitchToggleButtonStyle}" />
                             </Grid>
                         </Border>
