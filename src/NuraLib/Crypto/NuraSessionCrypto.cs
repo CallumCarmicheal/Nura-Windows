@@ -159,6 +159,8 @@ public sealed class NuraSessionCrypto {
             for (var i = 0; i < remaining; i++) {
                 output[offset + i] = (byte)(payload[offset + i] ^ keystream[i]);
             }
+
+            IncrementCounterBlock(counterBlock);
         }
 
         return output;

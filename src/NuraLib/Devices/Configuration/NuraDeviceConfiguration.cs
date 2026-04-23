@@ -55,16 +55,24 @@ public sealed class NuraDeviceConfiguration(ConnectedNuraDevice nuraDevice) {
         _voicePromptGain = gain;
     }
 
-    private void EnsureInteractionCapability(NuraInteractionCapabilities capability, string featureName) {
+    public void EnsureInteractionCapability(NuraInteractionCapabilities capability, string featureName) {
         if (!nuraDevice.Info.Supports(capability)) {
             throw new NotSupportedException($"{featureName} is not supported by device {nuraDevice.Info.TypeName} on firmware {nuraDevice.Info.FirmwareVersion}.");
         }
     }
 
-    private void EnsureSystemCapability(NuraSystemCapabilities capability, string featureName) {
+    public void EnsureSystemCapability(NuraSystemCapabilities capability, string featureName) {
         if (!nuraDevice.Info.Supports(capability)) {
             throw new NotSupportedException($"{featureName} is not supported by device {nuraDevice.Info.TypeName} on firmware {nuraDevice.Info.FirmwareVersion}.");
         }
+    }
+
+    public bool HasInteractiveCapability(NuraInteractionCapabilities capability) {
+        return nuraDevice.Info.Supports(capability);
+    }
+
+    public bool HasSystemCapability(NuraSystemCapabilities capability) {
+        return nuraDevice.Info.Supports(capability);
     }
 
     /// <summary>

@@ -53,6 +53,7 @@ internal static class NuraProvisioningSupport {
                 continue;
             }
 
+            // The backend-issued start_3/run packets are server-encrypted GAIA families, not app_enc traffic.
             var rawCommandId = ResolveEntryServerEncryptedCommandId(packet.FlagA, packet.FlagM, appEncryptedResponse: false);
             var frame = GaiaPacketFactory.CreateRawCommand(rawCommandId, packet.PayloadBytes, gaiaVersion, gaiaFlags);
             var response = await transport.SendAsync(frame, cancellationToken);

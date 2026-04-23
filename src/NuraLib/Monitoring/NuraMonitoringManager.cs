@@ -41,7 +41,7 @@ public sealed class NuraMonitoringManager {
 
         await _devices.RefreshAsync(cancellationToken);
         _knownConnected = _devices.Connected.ToDictionary(
-            device => device.Info.DeviceAddress,
+            GetIdentityKey,
             StringComparer.OrdinalIgnoreCase);
         foreach (var device in _knownConnected.Values) {
             RaiseDeviceConnected(device);
@@ -89,17 +89,17 @@ public sealed class NuraMonitoringManager {
 
     private void ReconcileConnectedDevices(IReadOnlyList<ConnectedNuraDevice> connectedDevices) {
         var next = connectedDevices.ToDictionary(
-            device => device.Info.DeviceAddress,
+            GetIdentityKey,
             StringComparer.OrdinalIgnoreCase);
 
         foreach (var device in next.Values) {
-            if (!_knownConnected.ContainsKey(device.Info.DeviceAddress)) {
+            if (!_knownConnected.ContainsKey(GetIdentityKey(device))) {
                 RaiseDeviceConnected(device);
             }
         }
 
         foreach (var previous in _knownConnected.Values) {
-            if (!next.ContainsKey(previous.Info.DeviceAddress)) {
+            if (!next.ContainsKey(GetIdentityKey(previous))) {
                 RaiseDeviceDisconnected(previous);
             }
         }
@@ -119,5 +119,11 @@ public sealed class NuraMonitoringManager {
             _pollingCts = null;
             _logger.Information(Source, "Stopped Bluetooth connection monitoring.");
         }
+    }
+
+    private static string GetIdentityKey(ConnectedNuraDevice device) {
+        var serial = device.Info.Serial?.Trim() ?? string.Empty;
+        var address = device.Info.DeviceAddress?.Trim() ?? string.Empty;
+        return $"{serial}|{address}";
     }
 }

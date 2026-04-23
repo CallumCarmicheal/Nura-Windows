@@ -13,6 +13,7 @@ namespace NuraLib.Devices;
 /// </summary>
 public sealed class ConnectedNuraDevice : NuraDevice {
     private const string Source = nameof(ConnectedNuraDevice);
+    private static readonly TimeSpan NuraNowProvisioningRefreshInterval = TimeSpan.FromDays(30);
     private readonly NuraConfigState _state;
     private readonly NuraAuthManager _authManager;
     private readonly NuraClientLogger _logger;
@@ -54,23 +55,43 @@ public sealed class ConnectedNuraDevice : NuraDevice {
     /// </summary>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>
-    /// <see langword="true"/> when no persistent device key is available; otherwise, <see langword="false"/>.
+    /// <see langword="true"/> when no persistent device key is available, or when the device is marked as
+    /// a host-managed NuraNow device and its last successful provisioning is older than 30 days;
+    /// otherwise, <see langword="false"/>.
     /// </returns>
     public Task<bool> RequiresProvisioningAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(!HasPersistentDeviceKey);
+        if (!HasPersistentDeviceKey) {
+            return Task.FromResult(true);
+        }
+
+        if (!IsNuraNowDevice) {
+            return Task.FromResult(false);
+        }
+
+        if (LastProvisionedUtc is null) {
+            return Task.FromResult(true);
+        }
+
+        var expired = LastProvisionedUtc.Value.Add(NuraNowProvisioningRefreshInterval) <= DateTimeOffset.UtcNow;
+        return Task.FromResult(expired);
     }
 
     /// <summary>
     /// Ensures the device is provisioned and that a persistent device key has been recovered and stored.
     /// </summary>
+    /// <param name="forceProvision">Indicates whether to force provisioning even if the device is already provisioned, this is for use with NuraNow devices.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>
     /// A result describing whether provisioning succeeded and, if not, the known failure reason.
     /// </returns>
-    public async Task<NuraProvisioningResult> EnsureProvisionedAsync(CancellationToken cancellationToken = default) {
+    public async Task<NuraProvisioningResult> EnsureProvisionedAsync(bool forceProvision = false, CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
-        if (HasPersistentDeviceKey) {
+        var requiresProvisioning = await RequiresProvisioningAsync(cancellationToken);
+
+        // Even if the device is already provisioned, we may still want to do the provisioning because NuraNow devices need to phone home
+        // every month to stop themselves from being disabled and get updated licensing information.
+        if (!requiresProvisioning && !forceProvision) {
             return new NuraProvisioningResult(true);
         }
 
@@ -124,7 +145,10 @@ public sealed class ConnectedNuraDevice : NuraDevice {
                 throw new InvalidOperationException("Provisioning completed without returning an app_enc key.");
             }
 
-            var updatedDeviceConfig = Config with { DeviceKey = _authManager.CurrentAppEncKey };
+            var updatedDeviceConfig = Config with {
+                DeviceKey = _authManager.CurrentAppEncKey,
+                LastProvisionedUtc = DateTimeOffset.UtcNow
+            };
             UpdateConfig(updatedDeviceConfig);
             var updatedDevices = _state.Configuration.Devices
                 .Select(device => string.Equals(device.DeviceSerial, Info.Serial, StringComparison.OrdinalIgnoreCase)
@@ -564,6 +588,18 @@ public sealed class ConnectedNuraDevice : NuraDevice {
             : NuraPersonalisationMode.Neutral);
         State.UpdateImmersionLevelRaw(state.RawLevel);
         State.UpdateEffectiveImmersionLevelRaw(state.RawLevel);
+    }
+
+    internal async Task ApplyConnectionStateAsync(bool isConnected) {
+        if (IsConnected == isConnected) {
+            return;
+        }
+
+        IsConnected = isConnected;
+
+        if (!isConnected) {
+            await StopSessionAsync(CancellationToken.None);
+        }
     }
 
     private async Task StopSessionAsync(CancellationToken cancellationToken) {

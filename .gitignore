@@ -2,6 +2,7 @@
 .appdata/
 .dotnet_home/
 .dotnet/
+global.json
 
 # Ignore binaries.
 bin/

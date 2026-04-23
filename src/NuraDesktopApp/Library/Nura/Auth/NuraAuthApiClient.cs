@@ -7,6 +7,8 @@ using NuraDesktopConsole.Logging;
 namespace NuraDesktopConsole.Library.Nura.Auth;
 
 internal sealed class NuraAuthApiClient : IDisposable {
+    private const string PrimaryApiBase = "https://api-p3.nuraphone.com/";
+    private const string LegacyApiBase = "https://api-p1.nuraphone.com/";
     private readonly HttpClient _httpClient;
     private readonly SessionLogger _logger;
     private bool _disposed;
@@ -125,15 +127,13 @@ internal sealed class NuraAuthApiClient : IDisposable {
             payload,
             cancellationToken);
 
-        if (primaryResult.StatusCode != 404 ||
-                !state.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
+        var retryState = CreateAlternateApiState(state);
+        if (primaryResult.StatusCode != 404 || retryState is null) {
             return primaryResult;
         }
 
-        var retryState = state with {
-            ApiBase = "https://api-p3.nuraphone.com/"
-        };
-        _logger.WriteLine("auth.session_start.retry.reason=404_on_api_p1");
+        _logger.WriteLine("auth.session_start.retry.reason=404");
+        _logger.WriteLine($"auth.session_start.retry.previous_api_base={state.ApiBase}");
         _logger.WriteLine($"auth.session_start.retry.api_base={retryState.ApiBase}");
 
         return await SendAsync(
@@ -178,15 +178,13 @@ internal sealed class NuraAuthApiClient : IDisposable {
             payload,
             cancellationToken);
 
-        if (primaryResult.StatusCode != 404 ||
-            !requestState.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
+        var retryState = CreateAlternateApiState(requestState);
+        if (primaryResult.StatusCode != 404 || retryState is null) {
             return primaryResult;
         }
 
-        var retryState = requestState with {
-            ApiBase = "https://api-p3.nuraphone.com/"
-        };
-        _logger.WriteLine("auth.automated_entry.retry.reason=404_on_api_p1");
+        _logger.WriteLine("auth.automated_entry.retry.reason=404");
+        _logger.WriteLine($"auth.automated_entry.retry.previous_api_base={requestState.ApiBase}");
         _logger.WriteLine($"auth.automated_entry.retry.endpoint={normalizedEndpoint}");
         _logger.WriteLine($"auth.automated_entry.retry.api_base={retryState.ApiBase}");
 
@@ -452,11 +450,27 @@ internal sealed class NuraAuthApiClient : IDisposable {
         if (normalizedEndpoint.StartsWith("end_to_end/change_language", StringComparison.OrdinalIgnoreCase) ||
             normalizedEndpoint.StartsWith("end_to_end/upgrade", StringComparison.OrdinalIgnoreCase)) {
             return state with {
-                ApiBase = "https://api-p3.nuraphone.com/"
+                ApiBase = PrimaryApiBase
             };
         }
 
         return state;
+    }
+
+    private static NuraAuthState? CreateAlternateApiState(NuraAuthState state) {
+        if (state.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
+            return state with {
+                ApiBase = PrimaryApiBase
+            };
+        }
+
+        if (state.ApiBase.Contains("api-p3", StringComparison.OrdinalIgnoreCase)) {
+            return state with {
+                ApiBase = LegacyApiBase
+            };
+        }
+
+        return null;
     }
 
     private static string? TryGetHeader(
