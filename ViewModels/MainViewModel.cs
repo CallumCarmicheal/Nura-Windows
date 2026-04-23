@@ -23,6 +23,7 @@ public sealed class MainViewModel : ObservableObject {
     private readonly WindowPreferencesService _windowPreferencesService = new();
     private readonly ObservableCollection<string> _modes = new ObservableCollection<string>(new[] { "Neutral", "Personalised" });
     private readonly ObservableCollection<WindowAnchorOption> _windowAnchorOptions;
+    private readonly List<string> _devicePriorityIds = new();
     private readonly Stopwatch _animationStopwatch = new();
     private readonly WindowPreferences _windowPreferences;
 
@@ -50,12 +51,13 @@ public sealed class MainViewModel : ObservableObject {
     private bool _isCompactProfileSelectorOpen;
     private bool _useBitmapProfileRenderer;
     private bool _isProfileMorphing;
-    private bool _useRectangularProfileBands = false;
+    private int _profileBandLayoutIndex = 1;
     private bool _showProfileBackgroundHaze = true;
     private bool _hasCompletedAuthenticationGate;
     private bool _isAuthenticationCodeStep;
     private bool _connectToNura;
     private bool _hasAuthenticatedWithNura;
+    private bool _isDeviceDrawerOpen;
     private string _authenticationEmail = string.Empty;
     private string _authenticationCode = string.Empty;
     private string _authenticationStatusText = "Sign in with your email, or skip if your device keys are already stored locally.";
@@ -68,6 +70,7 @@ public sealed class MainViewModel : ObservableObject {
         _windowAnchorOptions = new ObservableCollection<WindowAnchorOption>(BuildWindowAnchorOptions());
         Profiles = BuildProfiles();
         Devices = new ObservableCollection<DeviceModel>(BuildDevices());
+        _devicePriorityIds.AddRange(Devices.Select(device => device.Id));
 
         foreach (var profile in Profiles.Values) {
             profile.Thumbnail = _renderer.RenderThumbnail(profile, 20);
@@ -191,10 +194,14 @@ public sealed class MainViewModel : ObservableObject {
     public DeviceModel CurrentDevice {
         get => _currentDevice;
         set {
+            var shouldPromote = OverflowDevices.Any(device => device.Id == value.Id);
             if (!SetProperty(ref _currentDevice, value)) {
                 return;
             }
 
+            if (shouldPromote) {
+                PromoteDevice(_currentDevice);
+            }
             OnPropertyChanged(nameof(CurrentProfiles));
             OnPropertyChanged(nameof(CurrentProfileCount));
             OnPropertyChanged(nameof(CurrentBatteryText));
@@ -202,6 +209,7 @@ public sealed class MainViewModel : ObservableObject {
             OnPropertyChanged(nameof(CurrentSoftwareVersion));
             OnPropertyChanged(nameof(CurrentConnectionStatusText));
             IsCompactProfileSelectorOpen = false;
+            IsDeviceDrawerOpen = false;
 
             if (!_currentDevice.Profiles.Contains(_currentProfile)) {
                 CurrentProfile = _currentDevice.Profiles[0];
@@ -281,10 +289,20 @@ public sealed class MainViewModel : ObservableObject {
         }
     }
 
-    public bool UseRectangularProfileBands {
-        get => _useRectangularProfileBands;
-        set => SetProperty(ref _useRectangularProfileBands, value);
+    public int ProfileBandLayoutIndex {
+        get => _profileBandLayoutIndex;
+        set {
+            if (SetProperty(ref _profileBandLayoutIndex, Math.Clamp(value, 0, 2))) {
+                OnPropertyChanged(nameof(ShowCircularProfileBands));
+                OnPropertyChanged(nameof(ShowPillProfileBands));
+                OnPropertyChanged(nameof(ProfileBandLayoutSubtitle));
+            }
+        }
     }
+
+    public bool ShowCircularProfileBands => ProfileBandLayoutIndex is 0 or 1;
+
+    public bool ShowPillProfileBands => ProfileBandLayoutIndex is 1 or 2;
 
     public bool ShowProfileBackgroundHaze {
         get => _showProfileBackgroundHaze;
@@ -294,6 +312,11 @@ public sealed class MainViewModel : ObservableObject {
     public bool ConnectToNura {
         get => _connectToNura;
         set => SetProperty(ref _connectToNura, value);
+    }
+
+    public bool IsDeviceDrawerOpen {
+        get => _isDeviceDrawerOpen;
+        set => SetProperty(ref _isDeviceDrawerOpen, value);
     }
 
     public string ConnectToNuraSubtitle => "Devices on the nura-now subscription would need to phone home roughly every 30 days, enable this if you need to stop your device from locking.";
@@ -313,6 +336,13 @@ public sealed class MainViewModel : ObservableObject {
     public string ProfileRendererSubtitle => UseBitmapProfileRenderer
         ? "Use the nura renderer (slower)."
         : "Use the Shape renderer (faster but not as accurate).";
+
+    public string ProfileBandLayoutSubtitle => ProfileBandLayoutIndex switch {
+        0 => "Expanded view only. Show the circular guide bands.",
+        1 => "Expanded view only. Show both the circular guide bands and the pill bands.",
+        2 => "Expanded view only. Show the pill bands.",
+        _ => "Expanded view only. Show both the circular guide bands and the pill bands."
+    };
 
     public WindowAnchorOption SelectedWindowAnchorOption {
         get => _selectedWindowAnchorOption;
@@ -373,6 +403,16 @@ public sealed class MainViewModel : ObservableObject {
         : "Offline mode using stored keys";
 
     public int CurrentProfileCount => CurrentProfiles.Count;
+
+    public IReadOnlyList<DeviceModel> PrioritizedDevices => BuildPrioritizedDevices();
+
+    public IReadOnlyList<DeviceModel> VisibleDevices => PrioritizedDevices.Take(3).ToList();
+
+    public IReadOnlyList<DeviceModel> OverflowDevices => PrioritizedDevices.Skip(3).ToList();
+
+    public bool HasOverflowDevices => OverflowDevices.Count > 0;
+
+    public string MoreDevicesButtonText => $"+{OverflowDevices.Count} more";
 
     public ProfileModel VisualFromProfile {
         get => _visualFromProfile;
@@ -605,6 +645,32 @@ public sealed class MainViewModel : ObservableObject {
         CompositionTarget.Rendering -= OnCompositionRendering;
     }
 
+    private List<DeviceModel> BuildPrioritizedDevices() {
+        var prioritizedIds = _devicePriorityIds
+            .Where(id => Devices.Any(device => device.Id == id))
+            .ToList();
+
+        foreach (var device in Devices) {
+            if (!prioritizedIds.Contains(device.Id)) {
+                prioritizedIds.Add(device.Id);
+            }
+        }
+
+        return prioritizedIds
+            .Select(id => Devices.First(device => device.Id == id))
+            .ToList();
+    }
+
+    private void PromoteDevice(DeviceModel device) {
+        _devicePriorityIds.Remove(device.Id);
+        _devicePriorityIds.Insert(0, device.Id);
+        OnPropertyChanged(nameof(PrioritizedDevices));
+        OnPropertyChanged(nameof(VisibleDevices));
+        OnPropertyChanged(nameof(OverflowDevices));
+        OnPropertyChanged(nameof(HasOverflowDevices));
+        OnPropertyChanged(nameof(MoreDevicesButtonText));
+    }
+
     private IReadOnlyDictionary<string, ProfileModel> BuildProfiles() {
         return new Dictionary<string, ProfileModel> {
             ["Callum"] = new ProfileModel(
@@ -628,9 +694,11 @@ public sealed class MainViewModel : ObservableObject {
     private IReadOnlyList<DeviceModel> BuildDevices() {
         return new[]
         {
-            new DeviceModel("nuratrue-pro", "NuraTrue Pro 523", 80, "NTP-523-84A2197", "3.2.1", new[] { Profiles["Callum"], Profiles["Studio"], Profiles["Travel"] }),
-            new DeviceModel("nuraloop", "NuraLoop", 62, "NLP-114-72C1901", "2.8.4", new[] { Profiles["Callum"], Profiles["Travel"] }, isConnected: false, socialMode: true, ancEnabled: false, euVolumeLimiter: true),
-            new DeviceModel("nuraphone", "nuraphone", 47, "NPH-008-44B9036", "4.1.0", new[] { Profiles["Callum"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false),
+            new DeviceModel("nuratrue-pro-523", "NuraTrue Pro 523", 80, "NTP-523-84A2197", "3.2.1", new[] { Profiles["Callum"], Profiles["Studio"], Profiles["Travel"] }, isConnected: true),
+            new DeviceModel("nuraloop-564", "NuraLoop 564", 62, "NLP-114-72C1901", "2.8.4", new[] { Profiles["Callum"], Profiles["Travel"] }, isConnected: false, socialMode: true, ancEnabled: false, euVolumeLimiter: true),
+            new DeviceModel("nuraphone-123", "nuraphone 123", 47, "NPH-008-44B9036", "4.1.0", new[] { Profiles["Callum"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false),
+            new DeviceModel("nurabuds-521", "NuraBuds 521", 91, "NBD-201-55F4412", "1.6.3", new[] { Profiles["Studio"], Profiles["Travel"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false),
+            new DeviceModel("nuraloop-796", "Nura Loop 796", 34, "NLB-171-22D8034", "0.9.7", new[] { Profiles["Callum"], Profiles["Studio"] }, isConnected: false, socialMode: false, ancEnabled: false, euVolumeLimiter: true, warningText: "Provisioning required"),
         };
     }
 

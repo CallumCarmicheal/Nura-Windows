@@ -29,6 +29,12 @@ public partial class CompactSettingsPageControl : UserControl
         _devicePreviewController = null;
     }
 
+    private void MoreDevicesPopup_OnClosed(object sender, System.EventArgs e) {
+        if (MoreDevicesButton is not null) {
+            MoreDevicesButton.IsChecked = false;
+        }
+    }
+
 #region Number Only Text Field
     private static readonly Regex _nonDigitRegex = new("[^0-9]+");
 

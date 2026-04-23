@@ -25,4 +25,10 @@ public partial class ExpandedDevicePageControl : UserControl
         _devicePreviewController?.Dispose();
         _devicePreviewController = null;
     }
+
+    private void MoreDevicesPopup_OnClosed(object sender, System.EventArgs e) {
+        if (MoreDevicesButton is not null) {
+            MoreDevicesButton.IsChecked = false;
+        }
+    }
 }
