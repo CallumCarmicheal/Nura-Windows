@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
@@ -140,6 +141,7 @@ public partial class MainWindow : Window {
 
     private static bool IsInteractiveElement(DependencyObject source) {
         return FindAncestor<ButtonBase>(source) is not null ||
+               FindAncestor<ListBoxItem>(source) is not null ||
                FindAncestor<Selector>(source) is not null ||
                FindAncestor<ScrollBar>(source) is not null ||
                FindAncestor<Thumb>(source) is not null ||
@@ -156,10 +158,33 @@ public partial class MainWindow : Window {
                 return match;
             }
 
-            parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
+            parent = GetParent(parent);
         }
 
         return null;
+    }
+
+    private static DependencyObject? GetParent(DependencyObject current) {
+        if (current is FrameworkElement frameworkElement) {
+            return frameworkElement.Parent
+                   ?? frameworkElement.TemplatedParent
+                   ?? GetVisualParent(current)
+                   ?? LogicalTreeHelper.GetParent(current);
+        }
+
+        if (current is FrameworkContentElement frameworkContentElement) {
+            return frameworkContentElement.Parent
+                   ?? frameworkContentElement.TemplatedParent
+                   ?? LogicalTreeHelper.GetParent(current);
+        }
+
+        return GetVisualParent(current) ?? LogicalTreeHelper.GetParent(current);
+    }
+
+    private static DependencyObject? GetVisualParent(DependencyObject current) {
+        return current is Visual or System.Windows.Media.Media3D.Visual3D
+            ? VisualTreeHelper.GetParent(current)
+            : null;
     }
 #endregion
 

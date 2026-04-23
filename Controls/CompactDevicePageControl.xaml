@@ -30,7 +30,6 @@
                     <Grid Grid.Column="1"
                           HorizontalAlignment="Stretch">
                         <ToggleButton x:Name="ProfileSelectorButton"
-                                      IsChecked="{Binding IsCompactProfileSelectorOpen, Mode=TwoWay}"
                                       Background="#10FFFFFF"
                                       BorderBrush="#22FFFFFF"
                                       BorderThickness="1"
@@ -90,14 +89,15 @@
                                 </Style>
                             </ToggleButton.Style>
                         </ToggleButton>
-                        <Popup IsOpen="{Binding IsCompactProfileSelectorOpen, Mode=TwoWay}"
+                        <Popup x:Name="ProfileSelectorPopup"
+                               IsOpen="{Binding IsChecked, ElementName=ProfileSelectorButton, Mode=TwoWay}"
                                AllowsTransparency="True"
                                Placement="Bottom"
                                PlacementTarget="{Binding ElementName=ProfileSelectorButton}"
                                VerticalOffset="8"
                                PopupAnimation="Fade"
                                StaysOpen="False"
-                               DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                               DataContext="{Binding DataContext, ElementName=ProfileSelectorButton}">
                             <Border Width="{Binding ActualWidth, ElementName=ProfileSelectorButton}"
                                     Background="#F2121212"
                                     BorderBrush="#22FFFFFF"
@@ -106,6 +106,7 @@
                                     Padding="6">
                                 <ListBox ItemsSource="{Binding CurrentProfiles}"
                                          SelectedItem="{Binding CurrentProfile, Mode=TwoWay}"
+                                         SelectionChanged="ProfileSelectorListBox_OnSelectionChanged"
                                          BorderThickness="0"
                                          Background="Transparent"
                                          ItemContainerStyle="{StaticResource PopupProfileItemStyle}">
@@ -262,22 +263,30 @@
                 <TextBlock Text="DEVICES" Style="{StaticResource SectionTitleStyle}" />
                 <ListBox x:Name="DeviceListBox"
                          Margin="0,12,0,0"
-                         ItemsSource="{Binding Devices}"
+                         ItemsSource="{Binding VisibleDevices}"
                          SelectedItem="{Binding CurrentDevice, Mode=TwoWay}"
                          BorderThickness="0"
                          Background="Transparent"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                         ItemContainerStyle="{StaticResource PillListBoxItemStyle}">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
+                         ItemContainerStyle="{StaticResource DeviceRailListBoxItemStyle}">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:DeviceModel}">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center">
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsConnected}" Value="False">
+                                                <Setter Property="Opacity" Value="0.54" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse Width="10" Height="10" Margin="0,2,10,0" VerticalAlignment="Top">
                                     <Ellipse.Style>
                                         <Style TargetType="Ellipse">
                                             <Setter Property="Fill" Value="#55FFFFFF" />
@@ -289,16 +298,157 @@
                                         </Style>
                                     </Ellipse.Style>
                                 </Ellipse>
-                                <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="SemiBold" />
-                            </StackPanel>
-                            <DataTemplate.Triggers>
-                                <DataTrigger Binding="{Binding IsConnected}" Value="False">
-                                    <Setter Property="Opacity" Value="0.5" />
-                                </DataTrigger>
-                            </DataTemplate.Triggers>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding Name}"
+                                               Foreground="White"
+                                               FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding DeviceStatusSummary, Mode=OneWay}"
+                                               Foreground="{StaticResource SubtleTextBrush}"
+                                               FontSize="12"
+                                               Margin="0,4,0,0" />
+                                    <TextBlock Text="{Binding WarningText}"
+                                               Foreground="#FFFFB25F"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Margin="0,4,0,0"
+                                               TextWrapping="Wrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasWarningText}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                <ToggleButton x:Name="MoreDevicesButton"
+                              Margin="0,10,0,0"
+                              Background="#10FFFFFF"
+                              BorderBrush="#22FFFFFF"
+                              BorderThickness="1"
+                              Foreground="White"
+                              Height="32"
+                              HorizontalAlignment="Stretch"
+                              Visibility="{Binding HasOverflowDevices, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <ToggleButton.Template>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border x:Name="Chrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="16">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="#16FFFFFF" />
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="#18FFFFFF" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </ToggleButton.Template>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding MoreDevicesButtonText}" />
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="&#xE70D;"
+                                   Margin="8,2,0,0"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource SubtleTextBrush}" />
+                    </StackPanel>
+                </ToggleButton>
+                <Popup x:Name="MoreDevicesPopup"
+                       IsOpen="{Binding IsChecked, ElementName=MoreDevicesButton}"
+                       Closed="MoreDevicesPopup_OnClosed"
+                       AllowsTransparency="True"
+                       Placement="Bottom"
+                       PlacementTarget="{Binding ElementName=MoreDevicesButton}"
+                       VerticalOffset="8"
+                       PopupAnimation="Fade"
+                       StaysOpen="False">
+                    <Border Width="{Binding ActualWidth, ElementName=MoreDevicesButton}"
+                            Background="#F2121212"
+                            BorderBrush="#22FFFFFF"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="6">
+                        <ListBox ItemsSource="{Binding OverflowDevices}"
+                                 SelectedItem="{Binding CurrentDevice, Mode=TwoWay}"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 ItemContainerStyle="{StaticResource DeviceRailListBoxItemStyle}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:DeviceModel}">
+                                    <Grid>
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Setter Property="Opacity" Value="1" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsConnected}" Value="False">
+                                                        <Setter Property="Opacity" Value="0.54" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Ellipse Width="10" Height="10" Margin="0,2,10,0" VerticalAlignment="Top">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill" Value="#55FFFFFF" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                            <Setter Property="Fill" Value="#FF64FFB0" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding Name}"
+                                                       Foreground="White"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding DeviceStatusSummary, Mode=OneWay}"
+                                                       Foreground="{StaticResource SubtleTextBrush}"
+                                                       FontSize="12"
+                                                       Margin="0,4,0,0" />
+                                            <TextBlock Text="{Binding WarningText}"
+                                                       Foreground="#FFFFB25F"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasWarningText}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Popup>
             </StackPanel>
         </Border>
 

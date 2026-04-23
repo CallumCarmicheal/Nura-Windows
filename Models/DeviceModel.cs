@@ -7,6 +7,7 @@ public sealed class DeviceModel : ObservableObject {
     private bool _socialMode;
     private bool _ancEnabled;
     private bool _euVolumeLimiter;
+    private string _warningText;
 
     public DeviceModel(
         string id,
@@ -18,7 +19,8 @@ public sealed class DeviceModel : ObservableObject {
         bool isConnected = true,
         bool socialMode = false,
         bool ancEnabled = true,
-        bool euVolumeLimiter = false
+        bool euVolumeLimiter = false,
+        string warningText = ""
     ) {
         Id = id;
         Name = name;
@@ -30,6 +32,7 @@ public sealed class DeviceModel : ObservableObject {
         _socialMode = socialMode;
         _ancEnabled = ancEnabled;
         _euVolumeLimiter = euVolumeLimiter;
+        _warningText = warningText;
     }
 
     public string Id { get; }
@@ -76,6 +79,17 @@ public sealed class DeviceModel : ObservableObject {
         get => _euVolumeLimiter;
         set => SetProperty(ref _euVolumeLimiter, value);
     }
+
+    public string WarningText {
+        get => _warningText;
+        set {
+            if (SetProperty(ref _warningText, value)) {
+                OnPropertyChanged(nameof(HasWarningText));
+            }
+        }
+    }
+
+    public bool HasWarningText => !string.IsNullOrWhiteSpace(WarningText);
 
     public string SocialModeText => SocialMode ? "On" : "Off";
 

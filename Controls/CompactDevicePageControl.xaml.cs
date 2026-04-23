@@ -25,4 +25,16 @@ public partial class CompactDevicePageControl : UserControl
         _devicePreviewController?.Dispose();
         _devicePreviewController = null;
     }
+
+    private void ProfileSelectorListBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e) {
+        if (ProfileSelectorButton is not null) {
+            ProfileSelectorButton.IsChecked = false;
+        }
+    }
+
+    private void MoreDevicesPopup_OnClosed(object sender, System.EventArgs e) {
+        if (MoreDevicesButton is not null) {
+            MoreDevicesButton.IsChecked = false;
+        }
+    }
 }

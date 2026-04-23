@@ -443,6 +443,37 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="ThreeStateSliderStyle" TargetType="Slider">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Foreground" Value="{StaticResource AccentGradientBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Margin="0,6">
+                            <Track x:Name="PART_Track"
+                                   VerticalAlignment="Center">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SliderTrackRepeatButtonStyle}"
+                                                  Height="6"
+                                                  Background="{StaticResource AccentGradientBrush}"
+                                                  Command="Slider.DecreaseLarge" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource SliderTrackRepeatButtonStyle}"
+                                                  Height="6"
+                                                  Background="#18FFFFFF"
+                                                  Command="Slider.IncreaseLarge" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource SliderThumbStyle}" />
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         
         <Style x:Key="BottomNavButtonStyle" TargetType="Button">
             <Setter Property="Foreground" Value="#94FFFFFF" />
