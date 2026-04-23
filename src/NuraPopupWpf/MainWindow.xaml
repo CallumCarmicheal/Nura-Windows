@@ -1,0 +1,79 @@
+<Window x:Class="NuraPopupWpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:NuraPopupWpf.Controls"
+        mc:Ignorable="d"
+        Title="Nura Popup"
+        Width="980"
+        Height="800"
+        Background="Transparent"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        SizeToContent="Manual"
+        WindowStartupLocation="Manual">
+    <Grid PreviewMouseLeftButtonDown="ShellBackground_OnPreviewMouseLeftButtonDown">
+            <Border Style="{StaticResource PopupShellStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.RowSpan="3"
+                            IsHitTestVisible="False">
+                        <Border.Background>
+                            <RadialGradientBrush Center="0.5,0.0"
+                                                 GradientOrigin="0.5,0.0"
+                                                 RadiusX="0.92"
+                                                 RadiusY="0.62">
+                                <GradientStop Color="#30D946EF" Offset="0.0" />
+                                <GradientStop Color="#1ED946EF" Offset="0.18" />
+                                <GradientStop Color="#0FD946EF" Offset="0.30" />
+                                <GradientStop Color="#04D946EF" Offset="0.42" />
+                                <GradientStop Color="#00D946EF" Offset="0.56" />
+                            </RadialGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <Border Grid.Row="0"
+                            Background="Transparent"
+                            BorderBrush="#1FFFFFFF"
+                            BorderThickness="0,0,0,1"
+                            Padding="18,16"
+                            Visibility="{Binding IsAuthenticationPage, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                            MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+                        <controls:ShellHeaderControl />
+                    </Border>
+                    <ScrollViewer Grid.Row="1"
+                                  Margin="16,0"
+                                  Style="{StaticResource OverlayScrollViewerStyle}"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  PanningMode="VerticalOnly"
+                                  CanContentScroll="False">
+                        <ScrollViewer.Resources>
+                            <Style TargetType="ScrollBar"
+                                   BasedOn="{StaticResource ThinVerticalScrollBarStyle}" />
+                        </ScrollViewer.Resources>
+                        <Grid>
+                            <controls:AuthenticationPageControl Visibility="{Binding IsAuthenticationPage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <Grid Visibility="{Binding IsAuthenticationPage, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                <controls:DevicePageControl Visibility="{Binding IsDevicePage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <controls:SettingsPageControl Visibility="{Binding IsSettingsPage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                    <Border Grid.Row="2"
+                            BorderBrush="#1FFFFFFF"
+                            BorderThickness="0,1,0,0"
+                            Padding="16,12"
+                            Visibility="{Binding IsAuthenticationPage, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                            Height="64">
+                        <controls:BottomNavigationControl />
+                    </Border>
+                </Grid>
+            </Border>
+    </Grid>
+</Window>
