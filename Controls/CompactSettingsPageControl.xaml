@@ -46,6 +46,32 @@
                                    FontWeight="SemiBold" />
                     </StackPanel>
                 </Button>
+                <Button Margin="0,0,0,16"
+                        Command="{Binding ReopenAuthenticationCommand}"
+                        Style="{StaticResource ValuePillButtonStyle}"
+                        HorizontalAlignment="Stretch">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasAuthenticatedWithNura}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="&#xE721;"
+                                   Foreground="#FFB78CFF"
+                                   FontSize="13"
+                                   Margin="0,0,8,0" />
+                        <TextBlock Text="Log in to Nura"
+                                   Foreground="White"
+                                   FontSize="13"
+                                   FontWeight="SemiBold" />
+                    </StackPanel>
+                </Button>
 
                 <TextBlock Text="APP" Style="{StaticResource SectionTitleStyle}" Margin="0,12,0,0" />
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,12,0,0">
@@ -319,6 +345,7 @@
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}"
                                     CornerRadius="16">
                                 <ContentPresenter HorizontalAlignment="Center"
                                                   VerticalAlignment="Center" />
@@ -423,6 +450,19 @@
                         </ListBox>
                     </Border>
                 </Popup>
+                <StackPanel>
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Opacity" Value="1" />
+                            <Setter Property="IsEnabled" Value="True" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CanInteractWithCurrentDeviceControls}" Value="False">
+                                    <Setter Property="Opacity" Value="0.4" />
+                                    <Setter Property="IsEnabled" Value="False" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -479,6 +519,7 @@
                         <TextBlock Grid.Column="1" Text="{Binding CurrentSoftwareVersion}" Foreground="White" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" />
                     </Grid>
                 </Border>
+                </StackPanel>
             </StackPanel>
         </Border>
     </StackPanel>

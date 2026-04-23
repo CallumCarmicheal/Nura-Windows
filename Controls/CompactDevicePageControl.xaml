@@ -82,6 +82,9 @@
                                         <Trigger Property="IsChecked" Value="True">
                                             <Setter Property="Background" Value="#18FFFFFF" />
                                         </Trigger>
+                                        <DataTrigger Binding="{Binding ShowDisconnectedDevicePlaceholder}" Value="True">
+                                            <Setter Property="IsEnabled" Value="False" />
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding CurrentProfileCount}" Value="1">
                                             <Setter Property="IsEnabled" Value="False" />
                                         </DataTrigger>
@@ -142,105 +145,194 @@
                 </Grid>
 
                 <Grid Grid.Row="1" Margin="0,18,0,18">
-                    <Grid x:Name="CompactHazeHost" Width="{Binding ActualHeight, RelativeSource={RelativeSource Self}}">
-                        <Ellipse HorizontalAlignment="Stretch"
-                                 VerticalAlignment="Stretch"
-                                 RenderTransformOrigin="0.5,0.5"
-                                 Visibility="{Binding ShowProfileBackgroundHaze, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid>
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowDisconnectedDevicePlaceholder}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid x:Name="CompactHazeHost" Width="{Binding ActualHeight, RelativeSource={RelativeSource Self}}">
+                            <Ellipse IsHitTestVisible="False"
+                                     HorizontalAlignment="Stretch"
+                                     VerticalAlignment="Stretch"
+                                     RenderTransformOrigin="0.5,0.5"
+                                     Visibility="{Binding ShowProfileBackgroundHaze, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Ellipse.Fill>
+                                    <RadialGradientBrush RadiusX="0.5" RadiusY="0.5" Center="0.5,0.5" GradientOrigin="0.5,0.5">
+                                        <GradientStop Color="#4ED946EF" Offset="0.0" />
+                                        <GradientStop Color="#32D946EF" Offset="0.18" />
+                                        <GradientStop Color="#18D946EF" Offset="0.36" />
+                                        <GradientStop Color="#06D946EF" Offset="0.60" />
+                                        <GradientStop Color="#00D946EF" Offset="0.78" />
+                                    </RadialGradientBrush>
+                                </Ellipse.Fill>
+                                <Ellipse.Effect>
+                                    <BlurEffect Radius="108" RenderingBias="Quality" />
+                                </Ellipse.Effect>
+                                <Ellipse.RenderTransform>
+                                    <ScaleTransform ScaleX="2.5" ScaleY="2" />
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
+                        </Grid>
+                        <Ellipse Width="270"
+                                 Height="270"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center">
                             <Ellipse.Fill>
-                                <RadialGradientBrush RadiusX="0.5" RadiusY="0.5" Center="0.5,0.5" GradientOrigin="0.5,0.5">
-                                    <GradientStop Color="#4ED946EF" Offset="0.0" />
-                                    <GradientStop Color="#32D946EF" Offset="0.18" />
-                                    <GradientStop Color="#18D946EF" Offset="0.36" />
-                                    <GradientStop Color="#06D946EF" Offset="0.60" />
-                                    <GradientStop Color="#00D946EF" Offset="0.78" />
+                                <RadialGradientBrush Center="0.5,0.5"
+                                                     GradientOrigin="0.5,0.5"
+                                                     RadiusX="0.5"
+                                                     RadiusY="0.5">
+                                    <GradientStop Color="#14FF57B9" Offset="0" />
+                                    <GradientStop Color="#10FF57B9" Offset="0.42" />
+                                    <GradientStop Color="#08FF57B9" Offset="0.66" />
+                                    <GradientStop Color="#02FF57B9" Offset="0.86" />
+                                    <GradientStop Color="#00FF57B9" Offset="1" />
                                 </RadialGradientBrush>
                             </Ellipse.Fill>
-                            <Ellipse.Effect>
-                                <BlurEffect Radius="108" RenderingBias="Quality" />
-                            </Ellipse.Effect>
-                            <Ellipse.RenderTransform>
-                                <ScaleTransform ScaleX="2.5" ScaleY="2" />
-                            </Ellipse.RenderTransform>
                         </Ellipse>
+                        <Ellipse Width="236" Height="236" Stroke="#18FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Ellipse Width="192" Height="192" Stroke="#12FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Grid Width="226"
+                              Height="226"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
+                            <local:ProfileVisualControl FromProfile="{Binding VisualFromProfile}"
+                                                        ToProfile="{Binding VisualToProfile}"
+                                                        ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
+                                                        ModeProgress="{Binding VisualModeProgress}"
+                                                        ImmersionValue="{Binding CurrentVisualImmersionValue}"
+                                                        IsMorphing="{Binding IsProfileMorphing}"
+                                                        UseBitmapRenderer="{Binding UseBitmapProfileRenderer}" />
+
+                            <local:ProfileVisualControl IsHitTestVisible="False"
+                                                        Opacity="0.26"
+                                                        FromProfile="{Binding VisualFromProfile}"
+                                                        ToProfile="{Binding VisualToProfile}"
+                                                        ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
+                                                        ModeProgress="{Binding VisualModeProgress}"
+                                                        ImmersionValue="{Binding CurrentVisualImmersionValue}"
+                                                        IsMorphing="{Binding IsProfileMorphing}"
+                                                        RenderShadow="False"
+                                                        UseBitmapRenderer="False"
+                                                        RenderTransformOrigin="0.5,0.5">
+                                <local:ProfileVisualControl.CacheMode>
+                                    <BitmapCache RenderAtScale="0.8" />
+                                </local:ProfileVisualControl.CacheMode>
+
+                                <local:ProfileVisualControl.Style>
+                                    <Style TargetType="{x:Type local:ProfileVisualControl}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding UseBitmapProfileRenderer}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsProfileMorphing}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </local:ProfileVisualControl.Style>
+
+                                <local:ProfileVisualControl.Effect>
+                                    <BlurEffect Radius="8" RenderingBias="Performance" />
+                                </local:ProfileVisualControl.Effect>
+
+                                <local:ProfileVisualControl.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1.01" ScaleY="1.01" />
+                                    </TransformGroup>
+                                </local:ProfileVisualControl.RenderTransform>
+                            </local:ProfileVisualControl>
+                        </Grid>
                     </Grid>
-                    <Ellipse Width="270"
-                             Height="270"
-                             HorizontalAlignment="Center"
-                             VerticalAlignment="Center">
-                        <Ellipse.Fill>
-                            <RadialGradientBrush Center="0.5,0.5"
-                                                 GradientOrigin="0.5,0.5"
-                                                 RadiusX="0.5"
-                                                 RadiusY="0.5">
-                                <GradientStop Color="#14FF57B9" Offset="0" />
-                                <GradientStop Color="#10FF57B9" Offset="0.42" />
-                                <GradientStop Color="#08FF57B9" Offset="0.66" />
-                                <GradientStop Color="#02FF57B9" Offset="0.86" />
-                                <GradientStop Color="#00FF57B9" Offset="1" />
-                            </RadialGradientBrush>
-                        </Ellipse.Fill>
-                    </Ellipse>
-                    <Ellipse Width="236" Height="236" Stroke="#18FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <Ellipse Width="192" Height="192" Stroke="#12FFFFFF" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <Grid Width="226"
-                          Height="226"
-                          HorizontalAlignment="Center"
-                          VerticalAlignment="Center">
-                        
-                        
-                        <local:ProfileVisualControl FromProfile="{Binding VisualFromProfile}"
-                                                    ToProfile="{Binding VisualToProfile}"
-                                                    ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
-                                                    ModeProgress="{Binding VisualModeProgress}"
-                                                    ImmersionValue="{Binding CurrentImmersionValue}"
-                                                    IsMorphing="{Binding IsProfileMorphing}"
-                                                    UseBitmapRenderer="{Binding UseBitmapProfileRenderer}" />
-
-                        <local:ProfileVisualControl IsHitTestVisible="False"
-                                                    Opacity="0.26"
-                                                    FromProfile="{Binding VisualFromProfile}"
-                                                    ToProfile="{Binding VisualToProfile}"
-                                                    ProfileBlendProgress="{Binding VisualProfileBlendProgress}"
-                                                    ModeProgress="{Binding VisualModeProgress}"
-                                                    ImmersionValue="{Binding CurrentImmersionValue}"
-                                                    IsMorphing="{Binding IsProfileMorphing}"
-                                                    RenderShadow="False"
-                                                    UseBitmapRenderer="False"
-                                                    RenderTransformOrigin="0.5,0.5">
-                            <local:ProfileVisualControl.CacheMode>
-                                <BitmapCache RenderAtScale="0.8" />
-                            </local:ProfileVisualControl.CacheMode>
-
-                            <local:ProfileVisualControl.Style>
-                                <Style TargetType="{x:Type local:ProfileVisualControl}">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding UseBitmapProfileRenderer}" Value="True">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsProfileMorphing}" Value="True">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </local:ProfileVisualControl.Style>
-
-                            <local:ProfileVisualControl.Effect>
-                                <BlurEffect Radius="8" RenderingBias="Performance" />
-                            </local:ProfileVisualControl.Effect>
-
-                            <local:ProfileVisualControl.RenderTransform>
-                                <TransformGroup>
-                                    <ScaleTransform ScaleX="1.01" ScaleY="1.01" />
-                                </TransformGroup>
-                            </local:ProfileVisualControl.RenderTransform>
-                        </local:ProfileVisualControl>
-
+                    <Grid>
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowDisconnectedDevicePlaceholder}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid Width="228"
+                              Height="228"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
+                            <Ellipse Width="228"
+                                     Height="228">
+                                <Ellipse.Fill>
+                                    <RadialGradientBrush Center="0.5,0.5"
+                                                         GradientOrigin="0.5,0.5"
+                                                         RadiusX="0.9"
+                                                         RadiusY="0.5">
+                                        <GradientStop Color="#44FFFFFF" Offset="0.0" />
+                                        <GradientStop Color="#24FFFFFF" Offset="0.3" />
+                                        <GradientStop Color="#10FFFFFF" Offset="0.6" />
+                                        <GradientStop Color="#04FFFFFF" Offset="0.8" />
+                                        <GradientStop Color="#00FFFFFF" Offset="1.0" />
+                                    </RadialGradientBrush>
+                                </Ellipse.Fill>
+                                <Ellipse.Effect>
+                                    <BlurEffect Radius="22" RenderingBias="Quality" />
+                                </Ellipse.Effect>
+                            </Ellipse>
+                            <Grid Margin="26">
+                                <Image Source="/NuraPopupWpf;component/Resources/Images/NuraphonesMinimalWhiteLogo.png"
+                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                       RenderOptions.EdgeMode="Unspecified"
+                                       SnapsToDevicePixels="False"
+                                       UseLayoutRounding="False"
+                                       Stretch="Uniform"
+                                       Opacity="1" />
+                            </Grid>
+                        </Grid>
                     </Grid>
+                    <Button Command="{Binding ToggleDisconnectedDevicePreviewCommand}"
+                            Content="{Binding DisconnectedDevicePreviewButtonText}"
+                            Foreground="White"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Padding="16,8">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCurrentDeviceDisconnected}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                 </Grid>
 
                 <StackPanel Grid.Row="2">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Opacity" Value="1" />
+                            <Setter Property="IsEnabled" Value="True" />
+                            <Setter Property="Effect" Value="{x:Null}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CanInteractWithCurrentDeviceControls}" Value="False">
+                                    <Setter Property="Opacity" Value="0.4" />
+                                    <Setter Property="IsEnabled" Value="False" />
+                                    <Setter Property="Effect">
+                                        <Setter.Value>
+                                            <BlurEffect Radius="6" RenderingBias="Quality" />
+                                        </Setter.Value>
+                                    </Setter>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
                     <TextBlock Text="MODE" Style="{StaticResource SectionTitleStyle}" HorizontalAlignment="Center" />
                     <local:ModeSwitchControl Margin="0,8,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" />
 
@@ -344,6 +436,7 @@
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}"
                                     CornerRadius="16">
                                 <ContentPresenter HorizontalAlignment="Center"
                                                   VerticalAlignment="Center" />
@@ -454,6 +547,24 @@
 
         <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
             <StackPanel>
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Opacity" Value="1" />
+                        <Setter Property="IsEnabled" Value="True" />
+                        <Setter Property="Effect" Value="{x:Null}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding CanInteractWithCurrentDeviceControls}" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                                <Setter Property="IsEnabled" Value="False" />
+                                <Setter Property="Effect">
+                                    <Setter.Value>
+                                        <BlurEffect Radius="6" RenderingBias="Quality" />
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
                 <TextBlock Text="CONTROLS" Style="{StaticResource SectionTitleStyle}" />
                 <Grid Margin="0,12,0,0">
                     <Grid.RowDefinitions>
