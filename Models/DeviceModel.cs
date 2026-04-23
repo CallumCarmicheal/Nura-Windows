@@ -7,6 +7,8 @@ public sealed class DeviceModel : ObservableObject {
     private bool _socialMode;
     private bool _ancEnabled;
     private bool _euVolumeLimiter;
+    private int _immersionIndex;
+    private bool _isPersonalised;
     private string _warningText;
 
     public DeviceModel(
@@ -20,6 +22,8 @@ public sealed class DeviceModel : ObservableObject {
         bool socialMode = false,
         bool ancEnabled = true,
         bool euVolumeLimiter = false,
+        int immersionIndex = 3,
+        bool isPersonalised = true,
         string warningText = ""
     ) {
         Id = id;
@@ -32,6 +36,8 @@ public sealed class DeviceModel : ObservableObject {
         _socialMode = socialMode;
         _ancEnabled = ancEnabled;
         _euVolumeLimiter = euVolumeLimiter;
+        _immersionIndex = Math.Clamp(immersionIndex, 0, 6);
+        _isPersonalised = isPersonalised;
         _warningText = warningText;
     }
 
@@ -78,6 +84,22 @@ public sealed class DeviceModel : ObservableObject {
     public bool EuVolumeLimiter {
         get => _euVolumeLimiter;
         set => SetProperty(ref _euVolumeLimiter, value);
+    }
+
+    public int ImmersionIndex {
+        get => _immersionIndex;
+        set {
+            if (SetProperty(ref _immersionIndex, Math.Clamp(value, 0, 6))) {
+                OnPropertyChanged(nameof(CurrentImmersionValue));
+            }
+        }
+    }
+
+    public int CurrentImmersionValue => new[] { -2, -1, 0, 1, 2, 3, 4 }[ImmersionIndex];
+
+    public bool IsPersonalised {
+        get => _isPersonalised;
+        set => SetProperty(ref _isPersonalised, value);
     }
 
     public string WarningText {

@@ -45,14 +45,13 @@ public sealed class MainViewModel : ObservableObject {
     private ProfileModel _visualToProfile = null!;
     private double _visualProfileBlendProgress = 1.0;
     private double _visualModeProgress = 1.0;
-    private int _immersionIndex = 3;
-    private bool _isPersonalised = true;
     private bool _isSerialVisible;
     private bool _isCompactProfileSelectorOpen;
     private bool _useBitmapProfileRenderer;
     private bool _isProfileMorphing;
     private int _profileBandLayoutIndex = 1;
     private bool _showProfileBackgroundHaze = true;
+    private bool _showDisconnectedDeviceProfilePreview;
     private bool _hasCompletedAuthenticationGate;
     private bool _isAuthenticationCodeStep;
     private bool _connectToNura;
@@ -71,6 +70,10 @@ public sealed class MainViewModel : ObservableObject {
         Profiles = BuildProfiles();
         Devices = new ObservableCollection<DeviceModel>(BuildDevices());
         _devicePriorityIds.AddRange(Devices.Select(device => device.Id));
+
+        foreach (var device in Devices) {
+            device.PropertyChanged += OnDevicePropertyChanged;
+        }
 
         foreach (var profile in Profiles.Values) {
             profile.Thumbnail = _renderer.RenderThumbnail(profile, 20);
@@ -102,8 +105,12 @@ public sealed class MainViewModel : ObservableObject {
         BackToAuthenticationEmailCommand = new RelayCommand(_ => BackToAuthenticationEmail());
         SkipAuthenticationCommand = new RelayCommand(_ => SkipAuthentication());
         LogoutAuthenticationCommand = new RelayCommand(_ => LogoutAuthentication());
+        ReopenAuthenticationCommand = new RelayCommand(_ => ReopenAuthentication());
         ExportHearingProfilesCommand = new RelayCommand(_ => {
             ExportHearingProfiles();
+        });
+        ToggleDisconnectedDevicePreviewCommand = new RelayCommand(_ => {
+            ToggleDisconnectedDevicePreview();
         });
     }
 
@@ -121,6 +128,8 @@ public sealed class MainViewModel : ObservableObject {
 
     public ICommand ShowSettingsPageCommand { get; }
 
+    public ICommand ToggleDisconnectedDevicePreviewCommand { get; }
+
     public ICommand SelectModeCommand { get; }
 
     public ICommand ToggleSerialVisibilityCommand { get; }
@@ -134,6 +143,8 @@ public sealed class MainViewModel : ObservableObject {
     public ICommand SkipAuthenticationCommand { get; }
 
     public ICommand LogoutAuthenticationCommand { get; }
+
+    public ICommand ReopenAuthenticationCommand { get; }
 
     public ICommand ExportHearingProfilesCommand { get; }
 
@@ -208,8 +219,20 @@ public sealed class MainViewModel : ObservableObject {
             OnPropertyChanged(nameof(DisplaySerial));
             OnPropertyChanged(nameof(CurrentSoftwareVersion));
             OnPropertyChanged(nameof(CurrentConnectionStatusText));
+            OnPropertyChanged(nameof(SelectedMode));
+            OnPropertyChanged(nameof(IsPersonalised));
+            OnPropertyChanged(nameof(ImmersionIndex));
+            OnPropertyChanged(nameof(CurrentImmersionValue));
+            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
+            OnPropertyChanged(nameof(IsCurrentDeviceConnected));
+            OnPropertyChanged(nameof(IsCurrentDeviceDisconnected));
+            OnPropertyChanged(nameof(ShowDisconnectedDevicePlaceholder));
+            OnPropertyChanged(nameof(ShowDisconnectedDeviceProfilePreview));
+            OnPropertyChanged(nameof(CanInteractWithCurrentDeviceControls));
+            OnPropertyChanged(nameof(DisconnectedDevicePreviewButtonText));
             IsCompactProfileSelectorOpen = false;
             IsDeviceDrawerOpen = false;
+            ShowDisconnectedDeviceProfilePreview = false;
 
             if (!_currentDevice.Profiles.Contains(_currentProfile)) {
                 CurrentProfile = _currentDevice.Profiles[0];
@@ -239,30 +262,36 @@ public sealed class MainViewModel : ObservableObject {
     }
 
     public bool IsPersonalised {
-        get => _isPersonalised;
+        get => CurrentDevice.IsPersonalised;
         set {
-            if (!SetProperty(ref _isPersonalised, value)) {
+            if (CurrentDevice.IsPersonalised == value) {
                 return;
             }
 
+            CurrentDevice.IsPersonalised = value;
             OnPropertyChanged(nameof(SelectedMode));
+            OnPropertyChanged(nameof(IsPersonalised));
             StartProfileAnimation(profileChanged: false, modeChanged: true);
         }
     }
 
     public int ImmersionIndex {
-        get => _immersionIndex;
+        get => CurrentDevice.ImmersionIndex;
         set {
-            if (!SetProperty(ref _immersionIndex, value)) {
+            if (CurrentDevice.ImmersionIndex == value) {
                 return;
             }
 
+            CurrentDevice.ImmersionIndex = value;
+            OnPropertyChanged(nameof(ImmersionIndex));
             OnPropertyChanged(nameof(CurrentImmersionValue));
             UpdateProfileImage();
         }
     }
 
-    public int CurrentImmersionValue => new[] { -2, -1, 0, 1, 2, 3, 4 }[ImmersionIndex];
+    public int CurrentImmersionValue => CurrentDevice.CurrentImmersionValue;
+
+    public int CurrentVisualImmersionValue => UseDisconnectedDeviceVisualDefaults ? 0 : CurrentImmersionValue;
 
     public bool IsSerialVisible {
         get => _isSerialVisible;
@@ -307,6 +336,22 @@ public sealed class MainViewModel : ObservableObject {
     public bool ShowProfileBackgroundHaze {
         get => _showProfileBackgroundHaze;
         set => SetProperty(ref _showProfileBackgroundHaze, value);
+    }
+
+    public bool ShowDisconnectedDeviceProfilePreview {
+        get => _showDisconnectedDeviceProfilePreview;
+        set {
+            if (SetProperty(ref _showDisconnectedDeviceProfilePreview, value)) {
+                OnPropertyChanged(nameof(ShowDisconnectedDevicePlaceholder));
+                OnPropertyChanged(nameof(CanInteractWithCurrentDeviceControls));
+                OnPropertyChanged(nameof(DisconnectedDevicePreviewButtonText));
+                OnPropertyChanged(nameof(CurrentVisualImmersionValue));
+
+                if (IsCurrentDeviceDisconnected) {
+                    UpdateProfileImage();
+                }
+            }
+        }
     }
 
     public bool ConnectToNura {
@@ -377,6 +422,18 @@ public sealed class MainViewModel : ObservableObject {
         private set => SetProperty(ref _isProfileMorphing, value);
     }
 
+    public bool IsCurrentDeviceConnected => CurrentDevice.IsConnected;
+
+    public bool IsCurrentDeviceDisconnected => !CurrentDevice.IsConnected;
+
+    public bool ShowDisconnectedDevicePlaceholder => IsCurrentDeviceDisconnected && !ShowDisconnectedDeviceProfilePreview;
+
+    public bool CanInteractWithCurrentDeviceControls => CurrentDevice.IsConnected;
+
+    public string DisconnectedDevicePreviewButtonText => ShowDisconnectedDeviceProfilePreview
+        ? "Show disconnected artwork"
+        : "Preview hearing profile";
+
     public string DisplaySerial {
         get {
             var serial = CurrentDevice.SerialNumber;
@@ -434,6 +491,52 @@ public sealed class MainViewModel : ObservableObject {
         private set => SetProperty(ref _visualModeProgress, value);
     }
 
+    private bool UseDisconnectedDeviceVisualDefaults => IsCurrentDeviceDisconnected && ShowDisconnectedDeviceProfilePreview;
+
+    private double GetTargetVisualModeProgress() => UseDisconnectedDeviceVisualDefaults ? 1.0 : (IsPersonalised ? 1.0 : 0.0);
+
+    private void ToggleDisconnectedDevicePreview() {
+        if (CurrentDevice.IsConnected) {
+            return;
+        }
+
+        ShowDisconnectedDeviceProfilePreview = !ShowDisconnectedDeviceProfilePreview;
+    }
+
+    private void OnDevicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) {
+        if (!ReferenceEquals(sender, CurrentDevice)) {
+            return;
+        }
+
+        if (e.PropertyName == nameof(DeviceModel.IsConnected)) {
+            if (CurrentDevice.IsConnected) {
+                ShowDisconnectedDeviceProfilePreview = false;
+            }
+
+            OnPropertyChanged(nameof(CurrentConnectionStatusText));
+            OnPropertyChanged(nameof(IsCurrentDeviceConnected));
+            OnPropertyChanged(nameof(IsCurrentDeviceDisconnected));
+            OnPropertyChanged(nameof(ShowDisconnectedDevicePlaceholder));
+            OnPropertyChanged(nameof(ShowDisconnectedDeviceProfilePreview));
+            OnPropertyChanged(nameof(CanInteractWithCurrentDeviceControls));
+            OnPropertyChanged(nameof(DisconnectedDevicePreviewButtonText));
+            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
+
+            UpdateProfileImage();
+        }
+
+        if (e.PropertyName == nameof(DeviceModel.IsPersonalised)) {
+            OnPropertyChanged(nameof(SelectedMode));
+            OnPropertyChanged(nameof(IsPersonalised));
+        }
+
+        if (e.PropertyName == nameof(DeviceModel.ImmersionIndex)) {
+            OnPropertyChanged(nameof(ImmersionIndex));
+            OnPropertyChanged(nameof(CurrentImmersionValue));
+            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
+        }
+    }
+
     private void StartProfileAnimation(bool profileChanged, bool modeChanged) {
         var visualProfile = CaptureCurrentVisualProfile();
         var visualModeProgress = _visualModeProgress;
@@ -442,7 +545,7 @@ public sealed class MainViewModel : ObservableObject {
         _animationFromProfile = visualProfile;
         _animationToProfile = _currentProfile;
         _animationFromMode = visualModeProgress;
-        _animationToMode = _isPersonalised ? 1.0 : 0.0;
+        _animationToMode = GetTargetVisualModeProgress();
         _animateProfileBlend = profileChanged && !ReferenceEquals(visualProfile, _currentProfile);
         IsProfileMorphing = _animateProfileBlend;
         _animationDuration = TimeSpan.FromMilliseconds(profileChanged ? 520 : 420);
@@ -469,7 +572,7 @@ public sealed class MainViewModel : ObservableObject {
         if (t >= 1.0) {
             StopAnimationLoop();
             _displayedProfile = _currentProfile;
-            _displayedModeProgress = _isPersonalised ? 1.0 : 0.0;
+            _displayedModeProgress = GetTargetVisualModeProgress();
             IsProfileMorphing = false;
             VisualFromProfile = _currentProfile;
             VisualToProfile = _currentProfile;
@@ -531,7 +634,7 @@ public sealed class MainViewModel : ObservableObject {
     private void UpdateProfileImage() {
         StopAnimationLoop();
         _displayedProfile = _currentProfile;
-        _displayedModeProgress = _isPersonalised ? 1.0 : 0.0;
+        _displayedModeProgress = GetTargetVisualModeProgress();
         IsProfileMorphing = false;
         VisualFromProfile = _currentProfile;
         VisualToProfile = _currentProfile;
@@ -600,6 +703,13 @@ public sealed class MainViewModel : ObservableObject {
         IsAuthenticationCodeStep = false;
         HasCompletedAuthenticationGate = false;
         AuthenticationStatusText = "Sign in with your email, or skip if your device keys are already stored locally.";
+    }
+
+    private void ReopenAuthentication() {
+        AuthenticationCode = string.Empty;
+        IsAuthenticationCodeStep = false;
+        HasCompletedAuthenticationGate = false;
+        AuthenticationStatusText = "Sign in with your email to connect to Nura, or skip if your device keys are already stored locally.";
     }
 
     public bool TryGetRememberedWindowPosition(out Point position) {
@@ -694,11 +804,11 @@ public sealed class MainViewModel : ObservableObject {
     private IReadOnlyList<DeviceModel> BuildDevices() {
         return new[]
         {
-            new DeviceModel("nuratrue-pro-523", "NuraTrue Pro 523", 80, "NTP-523-84A2197", "3.2.1", new[] { Profiles["Callum"], Profiles["Studio"], Profiles["Travel"] }, isConnected: true),
-            new DeviceModel("nuraloop-564", "NuraLoop 564", 62, "NLP-114-72C1901", "2.8.4", new[] { Profiles["Callum"], Profiles["Travel"] }, isConnected: false, socialMode: true, ancEnabled: false, euVolumeLimiter: true),
-            new DeviceModel("nuraphone-123", "nuraphone 123", 47, "NPH-008-44B9036", "4.1.0", new[] { Profiles["Callum"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false),
-            new DeviceModel("nurabuds-521", "NuraBuds 521", 91, "NBD-201-55F4412", "1.6.3", new[] { Profiles["Studio"], Profiles["Travel"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false),
-            new DeviceModel("nuraloop-796", "Nura Loop 796", 34, "NLB-171-22D8034", "0.9.7", new[] { Profiles["Callum"], Profiles["Studio"] }, isConnected: false, socialMode: false, ancEnabled: false, euVolumeLimiter: true, warningText: "Provisioning required"),
+            new DeviceModel("nuratrue-pro-523", "NuraTrue Pro 523", 80, "NTP-523-84A2197", "3.2.1", new[] { Profiles["Callum"], Profiles["Studio"], Profiles["Travel"] }, isConnected: true, immersionIndex: 3, isPersonalised: true),
+            new DeviceModel("nuraloop-564", "NuraLoop 564", 62, "NLP-114-72C1901", "2.8.4", new[] { Profiles["Callum"], Profiles["Travel"] }, isConnected: false, socialMode: true, ancEnabled: false, euVolumeLimiter: true, immersionIndex: 1, isPersonalised: false),
+            new DeviceModel("nuraphone-123", "nuraphone 123", 47, "NPH-008-44B9036", "4.1.0", new[] { Profiles["Callum"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false, immersionIndex: 5, isPersonalised: true),
+            new DeviceModel("nurabuds-521", "NuraBuds 521", 91, "NBD-201-55F4412", "1.6.3", new[] { Profiles["Studio"], Profiles["Travel"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false, immersionIndex: 2, isPersonalised: false),
+            new DeviceModel("nuraloop-796", "Nura Loop 796", 34, "NLB-171-22D8034", "0.9.7", new[] { Profiles["Callum"], Profiles["Studio"] }, isConnected: false, socialMode: false, ancEnabled: false, euVolumeLimiter: true, immersionIndex: 4, isPersonalised: true, warningText: "Provisioning required"),
         };
     }
 
