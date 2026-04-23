@@ -6,8 +6,9 @@ namespace NuraLib.Configuration;
 public sealed record class NuraConfig {
     /// <summary>
     /// Gets the base API URL used for backend-assisted authentication and provisioning.
+    /// The modern 4.5.4-era runtime uses <c>api-p3</c> first and falls back to legacy hosts only when needed.
     /// </summary>
-    public string ApiBase { get; init; } = "https://api-p1.nuraphone.com/";
+    public string ApiBase { get; init; } = "https://api-p3.nuraphone.com/";
 
     /// <summary>
     /// Gets the client-instance identifier used when talking to the Nura backend.

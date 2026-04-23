@@ -4,7 +4,7 @@ using System.Text.Encodings.Web;
 namespace NuraDesktopConsole.Library.Nura.Auth;
 
 internal sealed record class NuraAuthState {
-    public string ApiBase { get; init; } = "https://api-p1.nuraphone.com/";
+    public string ApiBase { get; init; } = "https://api-p3.nuraphone.com/";
 
     public string Uuid { get; init; } = Guid.NewGuid().ToString();
 

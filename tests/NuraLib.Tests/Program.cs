@@ -1,12 +1,18 @@
 using System.Reflection;
 
+using NuraLib;
+using NuraLib.Auth;
+using NuraLib.Configuration;
 using NuraLib.Crypto;
 using NuraLib.Devices;
+using NuraLib.Logging;
 using NuraLib.Protocol;
 using NuraLib.Utilities;
 
 var tests = new CommandRoundTripTests();
 tests.RunAll();
+var deviceManagerTests = new DeviceManagerStabilityTests();
+deviceManagerTests.RunAll();
 Console.WriteLine("All NuraLib packet round-trip tests passed.");
 
 internal sealed class CommandRoundTripTests {
@@ -333,6 +339,147 @@ internal sealed class CommandRoundTripTests {
         Buffer.BlockCopy(tag, 0, payload, 1, tag.Length);
         Buffer.BlockCopy(cipherText, 0, payload, 1 + tag.Length, cipherText.Length);
         return CreateResponse(0x800A, payload);
+    }
+
+    private static void AssertEqual<T>(T expected, T actual, string testName) {
+        if (!EqualityComparer<T>.Default.Equals(expected, actual)) {
+            throw new InvalidOperationException($"{testName}: expected '{expected}' but got '{actual}'.");
+        }
+    }
+
+    private static void AssertTrue(bool condition, string testName, string message) {
+        if (!condition) {
+            throw new InvalidOperationException($"{testName}: {message}");
+        }
+    }
+}
+
+internal sealed class DeviceManagerStabilityTests {
+    private static readonly NuraDeviceConfig DeviceA = new() {
+        Type = "Nuraphone",
+        DeviceAddress = "00:11:22:33:44:55",
+        DeviceSerial = "DEVICE-A",
+        FirmwareVersion = 606,
+        MaxPacketLengthHint = 182,
+        DeviceKey = string.Empty
+    };
+
+    private static readonly NuraDeviceConfig DeviceB = new() {
+        Type = "NuraLoop",
+        DeviceAddress = "AA:BB:CC:DD:EE:FF",
+        DeviceSerial = "DEVICE-B",
+        FirmwareVersion = 100233,
+        MaxPacketLengthHint = 182,
+        DeviceKey = string.Empty
+    };
+
+    private static readonly NuraDeviceConfig DeviceAWithNewAddress = new() {
+        Type = "Nuraphone",
+        DeviceAddress = "00:11:22:33:44:66",
+        DeviceSerial = "DEVICE-A",
+        FirmwareVersion = 606,
+        MaxPacketLengthHint = 182,
+        DeviceKey = string.Empty
+    };
+
+    private static readonly NuraDeviceConfig DeviceAWithNewSerial = new() {
+        Type = "Nuraphone",
+        DeviceAddress = "00:11:22:33:44:55",
+        DeviceSerial = "DEVICE-A-NEW",
+        FirmwareVersion = 606,
+        MaxPacketLengthHint = 182,
+        DeviceKey = string.Empty
+    };
+
+    public void RunAll() {
+        ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh();
+        ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect();
+        ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges();
+    }
+
+    private static void ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh() {
+        var manager = CreateManager(DeviceA, DeviceB);
+
+        var initialA = (ConnectedNuraDevice?)manager.FindBySerial(DeviceA.DeviceSerial);
+        var initialB = (ConnectedNuraDevice?)manager.FindBySerial(DeviceB.DeviceSerial);
+
+        AssertTrue(initialA is not null, nameof(ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh), "Device A was not created.");
+        AssertTrue(initialB is not null, nameof(ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh), "Device B was not created.");
+        AssertTrue(!initialA!.IsConnected, nameof(ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh), "Device A should start disconnected.");
+        AssertTrue(!initialB!.IsConnected, nameof(ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh), "Device B should start disconnected.");
+
+        manager.ReplaceConnectedDevicesAsync([DeviceA, DeviceB], [DeviceA, DeviceB]).GetAwaiter().GetResult();
+
+        var refreshedA = (ConnectedNuraDevice?)manager.FindBySerial(DeviceA.DeviceSerial);
+        var refreshedB = (ConnectedNuraDevice?)manager.FindBySerial(DeviceB.DeviceSerial);
+
+        AssertTrue(ReferenceEquals(initialA, refreshedA), nameof(ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh), "Device A reference changed after refresh.");
+        AssertTrue(ReferenceEquals(initialB, refreshedB), nameof(ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh), "Device B reference changed after refresh.");
+        AssertTrue(refreshedA!.IsConnected, nameof(ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh), "Device A should be connected after refresh.");
+        AssertTrue(refreshedB!.IsConnected, nameof(ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh), "Device B should be connected after refresh.");
+        AssertEqual(2, manager.Connected.Count, nameof(ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh));
+    }
+
+    private static void ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect() {
+        var manager = CreateManager(DeviceA, DeviceB);
+        manager.ReplaceConnectedDevicesAsync([DeviceA, DeviceB], [DeviceA, DeviceB]).GetAwaiter().GetResult();
+
+        var originalA = (ConnectedNuraDevice?)manager.FindBySerial(DeviceA.DeviceSerial);
+        var originalB = (ConnectedNuraDevice?)manager.FindBySerial(DeviceB.DeviceSerial);
+
+        AssertTrue(originalA is not null, nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device A was not found.");
+        AssertTrue(originalB is not null, nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device B was not found.");
+
+        manager.ReplaceConnectedDevicesAsync([DeviceA, DeviceB], [DeviceB]).GetAwaiter().GetResult();
+
+        var afterDisconnectA = (ConnectedNuraDevice?)manager.FindBySerial(DeviceA.DeviceSerial);
+        var afterDisconnectB = (ConnectedNuraDevice?)manager.FindBySerial(DeviceB.DeviceSerial);
+
+        AssertTrue(ReferenceEquals(originalA, afterDisconnectA), nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device A reference changed after disconnect.");
+        AssertTrue(ReferenceEquals(originalB, afterDisconnectB), nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device B reference changed after partial refresh.");
+        AssertTrue(!afterDisconnectA!.IsConnected, nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device A should be marked disconnected.");
+        AssertTrue(afterDisconnectB!.IsConnected, nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device B should remain connected.");
+        AssertEqual(1, manager.Connected.Count, nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect));
+
+        manager.ReplaceConnectedDevicesAsync([DeviceA, DeviceB], [DeviceA, DeviceB]).GetAwaiter().GetResult();
+
+        var afterReconnectA = (ConnectedNuraDevice?)manager.FindBySerial(DeviceA.DeviceSerial);
+        var afterReconnectB = (ConnectedNuraDevice?)manager.FindBySerial(DeviceB.DeviceSerial);
+
+        AssertTrue(ReferenceEquals(originalA, afterReconnectA), nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device A reference changed after reconnect.");
+        AssertTrue(ReferenceEquals(originalB, afterReconnectB), nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device B reference changed after reconnect.");
+        AssertTrue(afterReconnectA!.IsConnected, nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device A should be reconnected.");
+        AssertTrue(afterReconnectB!.IsConnected, nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect), "Device B should still be connected.");
+        AssertEqual(2, manager.Connected.Count, nameof(ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect));
+    }
+
+    private static void ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges() {
+        var manager = CreateManager(DeviceA);
+        manager.ReplaceConnectedDevicesAsync([DeviceA], [DeviceA]).GetAwaiter().GetResult();
+
+        var original = (ConnectedNuraDevice?)manager.FindBySerial(DeviceA.DeviceSerial);
+        AssertTrue(original is not null, nameof(ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges), "Original device was not found.");
+
+        manager.ReplaceConnectedDevicesAsync([DeviceAWithNewAddress], [DeviceAWithNewAddress]).GetAwaiter().GetResult();
+
+        var replacementByAddress = manager.All.OfType<ConnectedNuraDevice>().Single();
+        AssertTrue(!ReferenceEquals(original, replacementByAddress), nameof(ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges), "Address change should create a new device instance.");
+        AssertTrue(replacementByAddress.IsConnected, nameof(ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges), "Replacement device should be connected.");
+
+        manager.ReplaceConnectedDevicesAsync([DeviceAWithNewSerial], [DeviceAWithNewSerial]).GetAwaiter().GetResult();
+
+        var replacementBySerial = manager.All.OfType<ConnectedNuraDevice>().Single();
+        AssertTrue(!ReferenceEquals(replacementByAddress, replacementBySerial), nameof(ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges), "Serial change should create a new device instance.");
+        AssertTrue(replacementBySerial.IsConnected, nameof(ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges), "Serial replacement device should be connected.");
+    }
+
+    private static NuraDeviceManager CreateManager(params NuraDeviceConfig[] devices) {
+        var state = new NuraConfigState(new NuraConfig {
+            Devices = devices.ToList()
+        });
+        var logger = new NuraClientLogger(_ => { });
+        var auth = new NuraAuthManager(state, logger);
+        return new NuraDeviceManager(state, logger, auth);
     }
 
     private static void AssertEqual<T>(T expected, T actual, string testName) {

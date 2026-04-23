@@ -30,6 +30,21 @@ public sealed record class NuraDeviceConfig {
     public int MaxPacketLengthHint { get; init; } = 182;
 
     /// <summary>
+    /// Gets a value indicating whether the host knows this device is a NuraNow device that must
+    /// periodically phone home to refresh its backend entitlement.
+    /// </summary>
+    /// <remarks>
+    /// The library does not currently auto-detect NuraNow status from device metadata or backend responses.
+    /// Hosts should set this explicitly when they know the device is subject to the monthly provisioning policy.
+    /// </remarks>
+    public bool IsNuraNowDevice { get; init; }
+
+    /// <summary>
+    /// Gets the last successful backend-assisted provisioning timestamp, when known.
+    /// </summary>
+    public DateTimeOffset? LastProvisionedUtc { get; init; }
+
+    /// <summary>
     /// Gets the persistent device key encoded as base64.
     /// </summary>
     public required string DeviceKey { get; init; }

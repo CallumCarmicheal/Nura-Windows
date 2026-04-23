@@ -13,6 +13,7 @@ public sealed class NuraDeviceManager {
     private readonly NuraConfigState _state;
     private readonly NuraClientLogger _logger;
     private readonly Auth.NuraAuthManager _authManager;
+    private readonly Dictionary<string, ConnectedNuraDevice> _knownDevices = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<NuraDevice> _all = [];
     private readonly List<ConnectedNuraDevice> _connected = [];
 
@@ -52,28 +53,44 @@ public sealed class NuraDeviceManager {
     }
 
     private void ReloadKnownDevices() {
-        _all.Clear();
-        _connected.Clear();
-
+        _knownDevices.Clear();
         foreach (var device in _state.Configuration.Devices) {
-            _all.Add(new NuraDevice(device));
+            var stableDevice = CreateConnectedDevice(device);
+            stableDevice.IsConnected = false;
+            _knownDevices[GetIdentityKey(device)] = stableDevice;
         }
+
+        RebuildDeviceViews(_state.Configuration.Devices);
     }
 
-    internal void ReplaceConnectedDevices(IEnumerable<NuraDeviceConfig> devices) {
-        _all.Clear();
-        _connected.Clear();
+    internal async Task ReplaceConnectedDevicesAsync(
+        IEnumerable<NuraDeviceConfig> allDevices,
+        IEnumerable<NuraDeviceConfig> connectedDevices) {
+        var allDeviceList = allDevices.ToList();
+        var connectedKeys = connectedDevices
+            .Select(GetIdentityKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentKeys = allDeviceList
+            .Select(GetIdentityKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var device in _state.Configuration.Devices) {
-            _all.Add(new NuraDevice(device));
+        var removedKeys = _knownDevices.Keys
+            .Where(key => !currentKeys.Contains(key))
+            .ToList();
+
+        foreach (var removedKey in removedKeys) {
+            var removedDevice = _knownDevices[removedKey];
+            await removedDevice.ApplyConnectionStateAsync(false);
+            _knownDevices.Remove(removedKey);
         }
 
-        foreach (var device in devices) {
-            var connected = new ConnectedNuraDevice(_state, _authManager, device, _logger);
-            _connected.Add(connected);
-            _all.RemoveAll(existing => string.Equals(existing.Info.Serial, connected.Info.Serial, StringComparison.OrdinalIgnoreCase));
-            _all.Add(connected);
+        foreach (var device in allDeviceList) {
+            var stableDevice = GetOrCreateDevice(device);
+            stableDevice.UpdateConfig(device);
+            await stableDevice.ApplyConnectionStateAsync(connectedKeys.Contains(GetIdentityKey(device)));
         }
+
+        RebuildDeviceViews(allDeviceList);
     }
 
     private async Task RefreshCoreAsync(CancellationToken cancellationToken) {
@@ -110,6 +127,8 @@ public sealed class NuraDeviceManager {
                             >= 0 and < 20000000 => 182,
                             _ => 70
                         },
+                        IsNuraNowDevice = false,
+                        LastProvisionedUtc = null,
                         DeviceKey = string.Empty
                     };
                     merged.RemoveAll(existing => string.Equals(existing.DeviceAddress, config.DeviceAddress, StringComparison.OrdinalIgnoreCase));
@@ -121,6 +140,8 @@ public sealed class NuraDeviceManager {
                         DeviceSerial = device.Address.Replace(":", string.Empty, StringComparison.Ordinal),
                         FirmwareVersion = 0,
                         MaxPacketLengthHint = 182,
+                        IsNuraNowDevice = false,
+                        LastProvisionedUtc = null,
                         DeviceKey = string.Empty
                     };
                     merged.RemoveAll(existing => string.Equals(existing.DeviceAddress, config.DeviceAddress, StringComparison.OrdinalIgnoreCase));
@@ -131,14 +152,15 @@ public sealed class NuraDeviceManager {
             connected.Add(config);
         }
 
-        ReplaceConnectedDevices(connected);
-
         var currentConfig = _state.Configuration;
         var updatedDevices = merged
-            .GroupBy(device => device.DeviceSerial, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(GetIdentityKey, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.Last())
             .OrderBy(device => device.DeviceSerial, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(device => device.DeviceAddress, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        await ReplaceConnectedDevicesAsync(updatedDevices, connected);
 
         if (!currentConfig.Devices.SequenceEqual(updatedDevices)) {
             _state.ReplaceConfiguration(
@@ -146,5 +168,39 @@ public sealed class NuraDeviceManager {
                 NuraStateSaveReason.DeviceInventory,
                 "Updated device inventory from Bluetooth refresh.");
         }
+    }
+
+    private ConnectedNuraDevice GetOrCreateDevice(NuraDeviceConfig config) {
+        var key = GetIdentityKey(config);
+        if (_knownDevices.TryGetValue(key, out var existing)) {
+            return existing;
+        }
+
+        var device = CreateConnectedDevice(config);
+        _knownDevices[key] = device;
+        return device;
+    }
+
+    private ConnectedNuraDevice CreateConnectedDevice(NuraDeviceConfig config) {
+        return new ConnectedNuraDevice(_state, _authManager, config, _logger);
+    }
+
+    private void RebuildDeviceViews(IEnumerable<NuraDeviceConfig> orderedDevices) {
+        _all.Clear();
+        _connected.Clear();
+
+        foreach (var config in orderedDevices) {
+            var device = _knownDevices[GetIdentityKey(config)];
+            _all.Add(device);
+            if (device.IsConnected) {
+                _connected.Add(device);
+            }
+        }
+    }
+
+    private static string GetIdentityKey(NuraDeviceConfig config) {
+        var serial = config.DeviceSerial?.Trim() ?? string.Empty;
+        var address = config.DeviceAddress?.Trim() ?? string.Empty;
+        return $"{serial}|{address}";
     }
 }

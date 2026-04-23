@@ -15,9 +15,24 @@ public class NuraDevice {
     public NuraDeviceInfo Info { get; private set; } = null!;
 
     /// <summary>
+    /// Gets a value indicating whether the device is currently present in the active Bluetooth inventory.
+    /// </summary>
+    public bool IsConnected { get; internal set; }
+
+    /// <summary>
     /// Gets a value indicating whether a persistent device key is stored for this device.
     /// </summary>
     public bool HasPersistentDeviceKey => !string.IsNullOrWhiteSpace(Config.DeviceKey);
+
+    /// <summary>
+    /// Gets a value indicating whether this device is configured as a NuraNow device by the host.
+    /// </summary>
+    public bool IsNuraNowDevice => Config.IsNuraNowDevice;
+
+    /// <summary>
+    /// Gets the last successful backend-assisted provisioning timestamp, when known.
+    /// </summary>
+    public DateTimeOffset? LastProvisionedUtc => Config.LastProvisionedUtc;
 
 
     internal NuraDevice(NuraDeviceConfig config) {

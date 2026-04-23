@@ -9,6 +9,8 @@ namespace NuraLib.Auth;
 
 internal sealed class NuraAuthApiClient {
     private const string Source = nameof(NuraAuthApiClient);
+    private const string PrimaryApiBase = "https://api-p3.nuraphone.com/";
+    private const string LegacyApiBase = "https://api-p1.nuraphone.com/";
     private readonly HttpClient _httpClient = new();
     private readonly NuraClientLogger _logger;
 
@@ -103,15 +105,12 @@ internal sealed class NuraAuthApiClient {
             payload,
             cancellationToken);
 
-        if (primaryResult.StatusCode != 404 ||
-            !state.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
+        var retryState = CreateAlternateApiState(state);
+        if (primaryResult.StatusCode != 404 || retryState is null) {
             return primaryResult;
         }
 
-        var retryState = state with {
-            ApiBase = "https://api-p3.nuraphone.com/"
-        };
-        _logger.Warning(Source, "Retrying session/start on api-p3 after 404 from api-p1.");
+        _logger.Warning(Source, $"Retrying session/start on {retryState.ApiBase} after 404 from {state.ApiBase}.");
         return await SendAsync(
             retryState,
             "end_to_end/session/start",
@@ -126,6 +125,8 @@ internal sealed class NuraAuthApiClient {
         int sessionId,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> packets,
         CancellationToken cancellationToken) {
+        var normalizedEndpoint = NormalizeAutomatedEntryEndpoint(endpoint);
+        var requestState = PreferPrimaryApiBaseForAutomatedEndpoint(state, normalizedEndpoint);
         var payload = new Dictionary<string, object?>(StringComparer.Ordinal) {
             ["session"] = sessionId
         };
@@ -134,12 +135,7 @@ internal sealed class NuraAuthApiClient {
             payload["packets"] = packets.Cast<object?>().ToArray();
         }
 
-        return SendAsync(
-            state,
-            NormalizeAutomatedEntryEndpoint(endpoint),
-            authenticated: true,
-            payload,
-            cancellationToken);
+        return SendAutomatedEntryAsync(requestState, normalizedEndpoint, payload, cancellationToken);
     }
 
     public Task<AuthCallResult> AppSessionAsync(
@@ -302,6 +298,32 @@ internal sealed class NuraAuthApiClient {
             : $"{apiBase}/";
     }
 
+    private async Task<AuthCallResult> SendAutomatedEntryAsync(
+        NuraAuthApiState state,
+        string normalizedEndpoint,
+        IReadOnlyDictionary<string, object?> payload,
+        CancellationToken cancellationToken) {
+        var primaryResult = await SendAsync(
+            state,
+            normalizedEndpoint,
+            authenticated: true,
+            payload,
+            cancellationToken);
+
+        var retryState = CreateAlternateApiState(state);
+        if (primaryResult.StatusCode != 404 || retryState is null) {
+            return primaryResult;
+        }
+
+        _logger.Warning(Source, $"Retrying {normalizedEndpoint} on {retryState.ApiBase} after 404 from {state.ApiBase}.");
+        return await SendAsync(
+            retryState,
+            normalizedEndpoint,
+            authenticated: true,
+            payload,
+            cancellationToken);
+    }
+
     private static Dictionary<string, object?> BuildAppContextPayload(
         NuraAuthApiState state,
         long appStartTimeUnixMilliseconds) {
@@ -346,6 +368,39 @@ internal sealed class NuraAuthApiClient {
         }
 
         return $"end_to_end/{trimmed}";
+    }
+
+    private static NuraAuthApiState PreferPrimaryApiBaseForAutomatedEndpoint(
+        NuraAuthApiState state,
+        string normalizedEndpoint) {
+        if (!state.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
+            return state;
+        }
+
+        if (normalizedEndpoint.StartsWith("end_to_end/change_language", StringComparison.OrdinalIgnoreCase) ||
+            normalizedEndpoint.StartsWith("end_to_end/upgrade", StringComparison.OrdinalIgnoreCase)) {
+            return state with {
+                ApiBase = PrimaryApiBase
+            };
+        }
+
+        return state;
+    }
+
+    private static NuraAuthApiState? CreateAlternateApiState(NuraAuthApiState state) {
+        if (state.ApiBase.Contains("api-p1", StringComparison.OrdinalIgnoreCase)) {
+            return state with {
+                ApiBase = PrimaryApiBase
+            };
+        }
+
+        if (state.ApiBase.Contains("api-p3", StringComparison.OrdinalIgnoreCase)) {
+            return state with {
+                ApiBase = LegacyApiBase
+            };
+        }
+
+        return null;
     }
 
     private static string? TryGetHeader(
