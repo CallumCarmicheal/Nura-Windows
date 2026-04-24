@@ -48,7 +48,6 @@
                 </Button>
                 <Button Margin="0,0,0,16"
                         Command="{Binding ReopenAuthenticationCommand}"
-                        Style="{StaticResource ValuePillButtonStyle}"
                         HorizontalAlignment="Stretch">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}">
@@ -117,18 +116,19 @@
                 <TextBlock Text="USER INTERFACE" Style="{StaticResource SectionTitleStyle}" Margin="0,16,0,0" />
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,12,0,0">
                     <StackPanel>
+                        <TextBlock Text="Band layout" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
                         <StackPanel>
-                            <TextBlock Text="Band layout" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                            <TextBlock Text="{Binding ProfileBandLayoutSubtitle}" Foreground="White" FontSize="13" TextWrapping="Wrap" />
+                            
                         </StackPanel>
-                        <Slider Margin="0,12,0,0"
+                        <Slider Margin="0,4,0,0"
                                 Minimum="0"
                                 Maximum="2"
                                 TickFrequency="1"
                                 IsSnapToTickEnabled="True"
                                 Value="{Binding ProfileBandLayoutIndex, Mode=TwoWay}"
                                 Style="{StaticResource ThreeStateSliderStyle}" />
-                        <Grid Margin="0,4,0,0">
+
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
@@ -150,6 +150,9 @@
                                        FontSize="11"
                                        HorizontalAlignment="Right" />
                         </Grid>
+
+                        <TextBlock Margin="0,8,0,0" Text="{Binding ProfileBandLayoutSubtitle}" Foreground="White" FontSize="13" TextWrapping="Wrap" 
+                                   MinHeight="35" />
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,10,0,0">
