@@ -10,6 +10,7 @@ namespace NuraPopupWpf.Controls;
 public partial class CompactSettingsPageControl : UserControl
 {
     private DeviceProfilesPreviewController? _devicePreviewController;
+    private object? _pendingAnchorSelection;
 
     public CompactSettingsPageControl()
     {
@@ -33,6 +34,81 @@ public partial class CompactSettingsPageControl : UserControl
         if (MoreDevicesButton is not null) {
             MoreDevicesButton.IsChecked = false;
         }
+    }
+
+    private void AnchorEdgePopup_OnClosed(object sender, System.EventArgs e) {
+        if (AnchorEdgeSelectorButton is not null) {
+            AnchorEdgeSelectorButton.IsChecked = false;
+        }
+    }
+
+    private void AnchorEdgeOptionButton_OnClick(object sender, RoutedEventArgs e) {
+        if (AnchorEdgePopup is not null) {
+            AnchorEdgePopup.IsOpen = false;
+        }
+    }
+
+    private void AnchorModeListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
+        if (TryGetClickedListBoxItemDataContext(e.OriginalSource as DependencyObject, out var dataContext)) {
+            _pendingAnchorSelection = dataContext;
+            e.Handled = true;
+        }
+    }
+
+    private void AnchorModeListBox_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) {
+        if (sender is not ListBox listBox) {
+            _pendingAnchorSelection = null;
+            return;
+        }
+
+        if (TryGetClickedListBoxItemDataContext(e.OriginalSource as DependencyObject, out var dataContext) &&
+            Equals(dataContext, _pendingAnchorSelection)) {
+            listBox.SelectedItem = dataContext;
+            e.Handled = true;
+        }
+
+        _pendingAnchorSelection = null;
+    }
+
+    private static bool TryGetClickedListBoxItemDataContext(DependencyObject? source, out object? dataContext) {
+        var listBoxItem = FindAncestor<ListBoxItem>(source);
+        dataContext = listBoxItem?.DataContext;
+        return listBoxItem is not null;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject {
+        while (current is not null) {
+            if (current is T match) {
+                return match;
+            }
+
+            current = GetParent(current);
+        }
+
+        return null;
+    }
+
+    private static DependencyObject? GetParent(DependencyObject current) {
+        if (current is FrameworkElement frameworkElement) {
+            return frameworkElement.Parent
+                   ?? frameworkElement.TemplatedParent
+                   ?? GetVisualParent(current)
+                   ?? LogicalTreeHelper.GetParent(current);
+        }
+
+        if (current is FrameworkContentElement frameworkContentElement) {
+            return frameworkContentElement.Parent
+                   ?? frameworkContentElement.TemplatedParent
+                   ?? LogicalTreeHelper.GetParent(current);
+        }
+
+        return GetVisualParent(current) ?? LogicalTreeHelper.GetParent(current);
+    }
+
+    private static DependencyObject? GetVisualParent(DependencyObject current) {
+        return current is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+            ? System.Windows.Media.VisualTreeHelper.GetParent(current)
+            : null;
     }
 
 #region Number Only Text Field

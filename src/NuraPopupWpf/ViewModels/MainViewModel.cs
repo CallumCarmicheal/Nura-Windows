@@ -23,6 +23,8 @@ public sealed class MainViewModel : ObservableObject {
     private readonly WindowPreferencesService _windowPreferencesService = new();
     private readonly ObservableCollection<string> _modes = new ObservableCollection<string>(new[] { "Neutral", "Personalised" });
     private readonly ObservableCollection<WindowAnchorOption> _windowAnchorOptions;
+    private readonly ObservableCollection<WindowAnchorEdgeOption> _windowAnchorEdgeOptions;
+    private readonly ObservableCollection<RememberExpandTypeOption> _rememberExpandTypeOptions;
     private readonly List<string> _devicePriorityIds = new();
     private readonly Stopwatch _animationStopwatch = new();
     private readonly WindowPreferences _windowPreferences;
@@ -63,10 +65,14 @@ public sealed class MainViewModel : ObservableObject {
     private string _exportRenderSizeText = "1024";
     private string _exportStatusText = "Save transparent PNG renders for every profile on every available device.";
     private WindowAnchorOption _selectedWindowAnchorOption = null!;
+    private WindowAnchorEdgeOption _selectedWindowAnchorEdgeOption = null!;
+    private RememberExpandTypeOption _selectedRememberExpandTypeOption = null!;
 
     public MainViewModel() {
         _windowPreferences = _windowPreferencesService.Load();
         _windowAnchorOptions = new ObservableCollection<WindowAnchorOption>(BuildWindowAnchorOptions());
+        _windowAnchorEdgeOptions = new ObservableCollection<WindowAnchorEdgeOption>(BuildWindowAnchorEdgeOptions());
+        _rememberExpandTypeOptions = new ObservableCollection<RememberExpandTypeOption>(BuildRememberExpandTypeOptions());
         Profiles = BuildProfiles();
         Devices = new ObservableCollection<DeviceModel>(BuildDevices());
         _devicePriorityIds.AddRange(Devices.Select(device => device.Id));
@@ -87,7 +93,9 @@ public sealed class MainViewModel : ObservableObject {
         _visualToProfile = _currentProfile;
         _visualProfileBlendProgress = 1.0;
         _visualModeProgress = 1.0;
-        _selectedWindowAnchorOption = _windowAnchorOptions.First(option => option.Mode == _windowPreferences.AnchorMode);
+        _selectedWindowAnchorOption = _windowAnchorOptions.FirstOrDefault(option => option.Mode == _windowPreferences.AnchorMode) ?? _windowAnchorOptions[0];
+        _selectedWindowAnchorEdgeOption = _windowAnchorEdgeOptions.FirstOrDefault(option => option.Edge == _windowPreferences.AnchorEdge) ?? _windowAnchorEdgeOptions.First(option => option.Edge == WindowAnchorEdge.Center);
+        _selectedRememberExpandTypeOption = _rememberExpandTypeOptions.FirstOrDefault(option => option.ExpandType == _windowPreferences.RememberExpandType) ?? _rememberExpandTypeOptions[0];
 
         ToggleExpandedCommand = new RelayCommand(_ => IsExpanded = !IsExpanded);
         ShowDevicePageCommand = new RelayCommand(_ => IsDevicePage = true);
@@ -112,6 +120,13 @@ public sealed class MainViewModel : ObservableObject {
         ToggleDisconnectedDevicePreviewCommand = new RelayCommand(_ => {
             ToggleDisconnectedDevicePreview();
         });
+        SelectWindowAnchorEdgeCommand = new RelayCommand(parameter => {
+            if (parameter is WindowAnchorEdgeOption option) {
+                SelectedWindowAnchorEdgeOption = option;
+            } else if (parameter is WindowAnchorEdge edge) {
+                SelectedWindowAnchorEdgeOption = _windowAnchorEdgeOptions.First(option => option.Edge == edge);
+            }
+        });
     }
 
     public ObservableCollection<DeviceModel> Devices { get; }
@@ -122,6 +137,10 @@ public sealed class MainViewModel : ObservableObject {
 
     public ObservableCollection<WindowAnchorOption> WindowAnchorOptions => _windowAnchorOptions;
 
+    public ObservableCollection<WindowAnchorEdgeOption> WindowAnchorEdgeOptions => _windowAnchorEdgeOptions;
+
+    public ObservableCollection<RememberExpandTypeOption> RememberExpandTypeOptions => _rememberExpandTypeOptions;
+
     public ICommand ToggleExpandedCommand { get; }
 
     public ICommand ShowDevicePageCommand { get; }
@@ -129,6 +148,8 @@ public sealed class MainViewModel : ObservableObject {
     public ICommand ShowSettingsPageCommand { get; }
 
     public ICommand ToggleDisconnectedDevicePreviewCommand { get; }
+
+    public ICommand SelectWindowAnchorEdgeCommand { get; }
 
     public ICommand SelectModeCommand { get; }
 
@@ -397,15 +418,67 @@ public sealed class MainViewModel : ObservableObject {
             }
 
             _windowPreferences.AnchorMode = value.Mode;
-            _windowPreferencesService.Save(_windowPreferences);
-            OnPropertyChanged(nameof(WindowAnchorSubtitle));
-            OnPropertyChanged(nameof(SelectedWindowAnchorModeValue));
+            SaveWindowPreferences();
+            NotifyWindowAnchorModeStateChanged();
         }
     }
 
     public WindowAnchorMode SelectedWindowAnchorModeValue => SelectedWindowAnchorOption.Mode;
 
-    public string WindowAnchorSubtitle => SelectedWindowAnchorOption.Subtitle;
+    public WindowAnchorEdgeOption SelectedWindowAnchorEdgeOption {
+        get => _selectedWindowAnchorEdgeOption;
+        set {
+            if (value is null || !SetProperty(ref _selectedWindowAnchorEdgeOption, value)) {
+                return;
+            }
+
+            _windowPreferences.AnchorEdge = value.Edge;
+            SaveWindowPreferences();
+            NotifyWindowAnchorEdgeStateChanged();
+        }
+    }
+
+    public WindowAnchorEdge SelectedWindowAnchorEdgeValue => SelectedWindowAnchorEdgeOption.Edge;
+
+    public RememberExpandTypeOption SelectedRememberExpandTypeOption {
+        get => _selectedRememberExpandTypeOption;
+        set {
+            if (value is null || !SetProperty(ref _selectedRememberExpandTypeOption, value)) {
+                return;
+            }
+
+            _windowPreferences.RememberExpandType = value.ExpandType;
+            SaveWindowPreferences();
+            NotifyRememberExpandTypeStateChanged();
+        }
+    }
+
+    public RememberExpandType SelectedRememberExpandTypeValue => SelectedRememberExpandTypeOption.ExpandType;
+
+    public string WindowAnchorSubtitle => SelectedWindowAnchorModeValue switch {
+        WindowAnchorMode.AnchorEdge => "Pin the popup to a screen edge or center point.",
+        WindowAnchorMode.RememberLastPosition => "Reopen where the window was last placed.",
+        WindowAnchorMode.Taskbar => "Open near the taskbar and expand away from it.",
+        _ => SelectedWindowAnchorOption.Subtitle
+    };
+
+    public bool ShowAnchorEdgeSelector => SelectedWindowAnchorModeValue == WindowAnchorMode.AnchorEdge;
+
+    public bool ShowRememberExpandTypeSelector => SelectedWindowAnchorModeValue == WindowAnchorMode.RememberLastPosition;
+
+    public string WindowAnchorEdgeSubtitle => SelectedWindowAnchorEdgeOption.Label;
+
+    public string RememberExpandTypeSubtitle => SelectedRememberExpandTypeOption.Subtitle;
+
+    public bool IsAnchorEdgeTopLeftSelected => SelectedWindowAnchorEdgeValue == WindowAnchorEdge.TopLeft;
+    public bool IsAnchorEdgeTopCenterSelected => SelectedWindowAnchorEdgeValue == WindowAnchorEdge.TopCenter;
+    public bool IsAnchorEdgeTopRightSelected => SelectedWindowAnchorEdgeValue == WindowAnchorEdge.TopRight;
+    public bool IsAnchorEdgeMiddleLeftSelected => SelectedWindowAnchorEdgeValue == WindowAnchorEdge.MiddleLeft;
+    public bool IsAnchorEdgeCenterSelected => SelectedWindowAnchorEdgeValue == WindowAnchorEdge.Center;
+    public bool IsAnchorEdgeMiddleRightSelected => SelectedWindowAnchorEdgeValue == WindowAnchorEdge.MiddleRight;
+    public bool IsAnchorEdgeBottomLeftSelected => SelectedWindowAnchorEdgeValue == WindowAnchorEdge.BottomLeft;
+    public bool IsAnchorEdgeBottomCenterSelected => SelectedWindowAnchorEdgeValue == WindowAnchorEdge.BottomCenter;
+    public bool IsAnchorEdgeBottomRightSelected => SelectedWindowAnchorEdgeValue == WindowAnchorEdge.BottomRight;
 
     public string ExportRenderSizeText {
         get => _exportRenderSizeText;
@@ -725,7 +798,37 @@ public sealed class MainViewModel : ObservableObject {
     public void SaveRememberedWindowPosition(double left, double top) {
         _windowPreferences.LastLeft = left;
         _windowPreferences.LastTop = top;
+        SaveWindowPreferences();
+    }
+
+    private void SaveWindowPreferences() {
         _windowPreferencesService.Save(_windowPreferences);
+    }
+
+    private void NotifyWindowAnchorModeStateChanged() {
+        OnPropertyChanged(nameof(WindowAnchorSubtitle));
+        OnPropertyChanged(nameof(SelectedWindowAnchorModeValue));
+        OnPropertyChanged(nameof(ShowAnchorEdgeSelector));
+        OnPropertyChanged(nameof(ShowRememberExpandTypeSelector));
+    }
+
+    private void NotifyWindowAnchorEdgeStateChanged() {
+        OnPropertyChanged(nameof(SelectedWindowAnchorEdgeValue));
+        OnPropertyChanged(nameof(WindowAnchorEdgeSubtitle));
+        OnPropertyChanged(nameof(IsAnchorEdgeTopLeftSelected));
+        OnPropertyChanged(nameof(IsAnchorEdgeTopCenterSelected));
+        OnPropertyChanged(nameof(IsAnchorEdgeTopRightSelected));
+        OnPropertyChanged(nameof(IsAnchorEdgeMiddleLeftSelected));
+        OnPropertyChanged(nameof(IsAnchorEdgeCenterSelected));
+        OnPropertyChanged(nameof(IsAnchorEdgeMiddleRightSelected));
+        OnPropertyChanged(nameof(IsAnchorEdgeBottomLeftSelected));
+        OnPropertyChanged(nameof(IsAnchorEdgeBottomCenterSelected));
+        OnPropertyChanged(nameof(IsAnchorEdgeBottomRightSelected));
+    }
+
+    private void NotifyRememberExpandTypeStateChanged() {
+        OnPropertyChanged(nameof(SelectedRememberExpandTypeValue));
+        OnPropertyChanged(nameof(RememberExpandTypeSubtitle));
     }
 
     private int GetClampedExportRenderSize() {
@@ -814,6 +917,11 @@ public sealed class MainViewModel : ObservableObject {
 
     private static IEnumerable<WindowAnchorOption> BuildWindowAnchorOptions() {
         yield return new WindowAnchorOption(
+            WindowAnchorMode.AnchorEdge,
+            "Anchor edge",
+            "Pin the popup to a screen edge or center point.");
+
+        yield return new WindowAnchorOption(
             WindowAnchorMode.Taskbar,
             "Taskbar",
             "Open near the taskbar and expand away from it.");
@@ -822,11 +930,35 @@ public sealed class MainViewModel : ObservableObject {
             WindowAnchorMode.RememberLastPosition,
             "Remember last position",
             "Reopen where the window was last placed.");
+    }
 
-        yield return new WindowAnchorOption(
-            WindowAnchorMode.Center,
-            "Center",
-            "Open mid-screen and keep expansion centered.");
+    private static IEnumerable<WindowAnchorEdgeOption> BuildWindowAnchorEdgeOptions() {
+        yield return new WindowAnchorEdgeOption(WindowAnchorEdge.TopLeft, "Top left", 0, 0);
+        yield return new WindowAnchorEdgeOption(WindowAnchorEdge.TopCenter, "Top center", 0, 1);
+        yield return new WindowAnchorEdgeOption(WindowAnchorEdge.TopRight, "Top right", 0, 2);
+        yield return new WindowAnchorEdgeOption(WindowAnchorEdge.MiddleLeft, "Middle left", 1, 0);
+        yield return new WindowAnchorEdgeOption(WindowAnchorEdge.Center, "Center", 1, 1);
+        yield return new WindowAnchorEdgeOption(WindowAnchorEdge.MiddleRight, "Middle right", 1, 2);
+        yield return new WindowAnchorEdgeOption(WindowAnchorEdge.BottomLeft, "Bottom left", 2, 0);
+        yield return new WindowAnchorEdgeOption(WindowAnchorEdge.BottomCenter, "Bottom center", 2, 1);
+        yield return new WindowAnchorEdgeOption(WindowAnchorEdge.BottomRight, "Bottom right", 2, 2);
+    }
+
+    private static IEnumerable<RememberExpandTypeOption> BuildRememberExpandTypeOptions() {
+        yield return new RememberExpandTypeOption(
+            RememberExpandType.BasedOnPosition,
+            "Based on position",
+            "Use the compact window center on the current monitor to decide whether expansion grows left or right.");
+
+        yield return new RememberExpandTypeOption(
+            RememberExpandType.Left,
+            "Left",
+            "Keep the left edge fixed while expanding and compacting.");
+
+        yield return new RememberExpandTypeOption(
+            RememberExpandType.Right,
+            "Right",
+            "Keep the right edge fixed while expanding and compacting.");
     }
 
     private static string NormaliseAuthenticationCode(string? value) {
