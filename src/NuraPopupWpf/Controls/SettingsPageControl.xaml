@@ -5,8 +5,25 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:controls="clr-namespace:NuraPopupWpf.Controls"
              mc:Ignorable="d">
-    <Grid Margin="0,16">
-        <controls:ExpandedSettingsPageControl Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibilityConverter}}" />
-        <controls:CompactSettingsPageControl Visibility="{Binding IsExpanded, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-    </Grid>
+    <UserControl.Resources>
+        <DataTemplate x:Key="CompactSettingsTemplate">
+            <controls:CompactSettingsPageControl />
+        </DataTemplate>
+        <DataTemplate x:Key="ExpandedSettingsTemplate">
+            <controls:ExpandedSettingsPageControl />
+        </DataTemplate>
+    </UserControl.Resources>
+    <ContentControl Margin="0,16"
+                    Content="{Binding}">
+        <ContentControl.Style>
+            <Style TargetType="ContentControl">
+                <Setter Property="ContentTemplate" Value="{StaticResource CompactSettingsTemplate}" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                        <Setter Property="ContentTemplate" Value="{StaticResource ExpandedSettingsTemplate}" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ContentControl.Style>
+    </ContentControl>
 </UserControl>

@@ -174,11 +174,14 @@
                     <StackPanel>
                         <TextBlock Text="Anchor" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
                         <TextBlock Text="{Binding WindowAnchorSubtitle}" Foreground="White" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0" />
-                        <ListBox Margin="0,10,0,0"
+                        <ListBox x:Name="AnchorModeListBox"
+                                 Margin="0,10,0,0"
                                  ItemsSource="{Binding WindowAnchorOptions}"
                                  SelectedItem="{Binding SelectedWindowAnchorOption, Mode=TwoWay}"
                                  BorderThickness="0"
                                  Background="Transparent"
+                                 PreviewMouseLeftButtonDown="AnchorModeListBox_PreviewMouseLeftButtonDown"
+                                 PreviewMouseLeftButtonUp="AnchorModeListBox_PreviewMouseLeftButtonUp"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                  ItemContainerStyle="{StaticResource PillListBoxItemStyle}">
@@ -193,6 +196,256 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                        <ToggleButton x:Name="AnchorEdgeSelectorButton"
+                                      Margin="0,12,0,0"
+                                      Background="#10FFFFFF"
+                                      BorderBrush="#22FFFFFF"
+                                      BorderThickness="1"
+                                      Foreground="White"
+                                      Padding="12,10"
+                                      Visibility="{Binding ShowAnchorEdgeSelector, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Chrome"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            Padding="{TemplateBinding Padding}"
+                                            CornerRadius="18">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Chrome" Property="Background" Value="#16FFFFFF" />
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Chrome" Property="Background" Value="#18FFFFFF" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Anchor edge" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                                    <TextBlock Text="{Binding WindowAnchorEdgeSubtitle}" Foreground="White" FontSize="13" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <UniformGrid Grid.Column="1"
+                                             Rows="3"
+                                             Columns="3"
+                                             Margin="12,0,0,0"
+                                             VerticalAlignment="Center">
+                                    <Border Width="7" Height="7" CornerRadius="3.5" Margin="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeTopLeftSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <Border Width="7" Height="7" CornerRadius="3.5" Margin="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeTopCenterSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <Border Width="7" Height="7" CornerRadius="3.5" Margin="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeTopRightSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <Border Width="7" Height="7" CornerRadius="3.5" Margin="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeMiddleLeftSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <Border Width="7" Height="7" CornerRadius="3.5" Margin="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeCenterSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <Border Width="7" Height="7" CornerRadius="3.5" Margin="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeMiddleRightSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <Border Width="7" Height="7" CornerRadius="3.5" Margin="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeBottomLeftSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <Border Width="7" Height="7" CornerRadius="3.5" Margin="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeBottomCenterSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <Border Width="7" Height="7" CornerRadius="3.5" Margin="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#28FFFFFF" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeBottomRightSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                </UniformGrid>
+                                <TextBlock Grid.Column="2"
+                                           FontFamily="Segoe Fluent Icons"
+                                           Text="&#xE70D;"
+                                           Margin="10,0,0,0"
+                                           Foreground="{StaticResource SubtleTextBrush}"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </ToggleButton>
+                        <Popup x:Name="AnchorEdgePopup"
+                               IsOpen="{Binding IsChecked, ElementName=AnchorEdgeSelectorButton}"
+                               Closed="AnchorEdgePopup_OnClosed"
+                               AllowsTransparency="True"
+                               Placement="Bottom"
+                               PlacementTarget="{Binding ElementName=AnchorEdgeSelectorButton}"
+                               VerticalOffset="8"
+                               PopupAnimation="Fade"
+                               StaysOpen="False">
+                            <Border Width="{Binding ActualWidth, ElementName=AnchorEdgeSelectorButton}"
+                                    Background="#F2121212"
+                                    BorderBrush="#22FFFFFF"
+                                    BorderThickness="1"
+                                    CornerRadius="20"
+                                    Padding="8">
+                                <UniformGrid Rows="3" Columns="3">
+                                    <Button Margin="4" Padding="10,8" Command="{Binding SelectWindowAnchorEdgeCommand}" CommandParameter="{x:Static models:WindowAnchorEdge.TopLeft}" Click="AnchorEdgeOptionButton_OnClick">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnchorEdgeTopLeftSelected}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+                                                        <Setter Property="BorderBrush" Value="#44FF8AE6" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                        <TextBlock Text="Top left" Foreground="White" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" />
+                                    </Button>
+                                    <Button Margin="4" Padding="10,8" Command="{Binding SelectWindowAnchorEdgeCommand}" CommandParameter="{x:Static models:WindowAnchorEdge.TopCenter}" Click="AnchorEdgeOptionButton_OnClick">
+                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding IsAnchorEdgeTopCenterSelected}" Value="True"><Setter Property="Background" Value="{StaticResource AccentGradientBrush}" /><Setter Property="BorderBrush" Value="#44FF8AE6" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                        <TextBlock Text="Top center" Foreground="White" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" />
+                                    </Button>
+                                    <Button Margin="4" Padding="10,8" Command="{Binding SelectWindowAnchorEdgeCommand}" CommandParameter="{x:Static models:WindowAnchorEdge.TopRight}" Click="AnchorEdgeOptionButton_OnClick">
+                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding IsAnchorEdgeTopRightSelected}" Value="True"><Setter Property="Background" Value="{StaticResource AccentGradientBrush}" /><Setter Property="BorderBrush" Value="#44FF8AE6" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                        <TextBlock Text="Top right" Foreground="White" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" />
+                                    </Button>
+                                    <Button Margin="4" Padding="10,8" Command="{Binding SelectWindowAnchorEdgeCommand}" CommandParameter="{x:Static models:WindowAnchorEdge.MiddleLeft}" Click="AnchorEdgeOptionButton_OnClick">
+                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding IsAnchorEdgeMiddleLeftSelected}" Value="True"><Setter Property="Background" Value="{StaticResource AccentGradientBrush}" /><Setter Property="BorderBrush" Value="#44FF8AE6" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                        <TextBlock Text="Middle left" Foreground="White" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" />
+                                    </Button>
+                                    <Button Margin="4" Padding="10,8" Command="{Binding SelectWindowAnchorEdgeCommand}" CommandParameter="{x:Static models:WindowAnchorEdge.Center}" Click="AnchorEdgeOptionButton_OnClick">
+                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding IsAnchorEdgeCenterSelected}" Value="True"><Setter Property="Background" Value="{StaticResource AccentGradientBrush}" /><Setter Property="BorderBrush" Value="#44FF8AE6" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                        <TextBlock Text="Center" Foreground="White" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" />
+                                    </Button>
+                                    <Button Margin="4" Padding="10,8" Command="{Binding SelectWindowAnchorEdgeCommand}" CommandParameter="{x:Static models:WindowAnchorEdge.MiddleRight}" Click="AnchorEdgeOptionButton_OnClick">
+                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding IsAnchorEdgeMiddleRightSelected}" Value="True"><Setter Property="Background" Value="{StaticResource AccentGradientBrush}" /><Setter Property="BorderBrush" Value="#44FF8AE6" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                        <TextBlock Text="Middle right" Foreground="White" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" />
+                                    </Button>
+                                    <Button Margin="4" Padding="10,8" Command="{Binding SelectWindowAnchorEdgeCommand}" CommandParameter="{x:Static models:WindowAnchorEdge.BottomLeft}" Click="AnchorEdgeOptionButton_OnClick">
+                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding IsAnchorEdgeBottomLeftSelected}" Value="True"><Setter Property="Background" Value="{StaticResource AccentGradientBrush}" /><Setter Property="BorderBrush" Value="#44FF8AE6" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                        <TextBlock Text="Bottom left" Foreground="White" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" />
+                                    </Button>
+                                    <Button Margin="4" Padding="10,8" Command="{Binding SelectWindowAnchorEdgeCommand}" CommandParameter="{x:Static models:WindowAnchorEdge.BottomCenter}" Click="AnchorEdgeOptionButton_OnClick">
+                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding IsAnchorEdgeBottomCenterSelected}" Value="True"><Setter Property="Background" Value="{StaticResource AccentGradientBrush}" /><Setter Property="BorderBrush" Value="#44FF8AE6" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                        <TextBlock Text="Bottom center" Foreground="White" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" />
+                                    </Button>
+                                    <Button Margin="4" Padding="10,8" Command="{Binding SelectWindowAnchorEdgeCommand}" CommandParameter="{x:Static models:WindowAnchorEdge.BottomRight}" Click="AnchorEdgeOptionButton_OnClick">
+                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding IsAnchorEdgeBottomRightSelected}" Value="True"><Setter Property="Background" Value="{StaticResource AccentGradientBrush}" /><Setter Property="BorderBrush" Value="#44FF8AE6" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                        <TextBlock Text="Bottom right" Foreground="White" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" />
+                                    </Button>
+                                </UniformGrid>
+                            </Border>
+                        </Popup>
+                        <StackPanel Margin="0,12,0,0"
+                                    Visibility="{Binding ShowRememberExpandTypeSelector, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="Expand type" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="{Binding RememberExpandTypeSubtitle}" Foreground="White" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0" />
+                            <ListBox Margin="0,10,0,0"
+                                     ItemsSource="{Binding RememberExpandTypeOptions}"
+                                     SelectedItem="{Binding SelectedRememberExpandTypeOption, Mode=TwoWay}"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                     ItemContainerStyle="{StaticResource PillListBoxItemStyle}">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type models:RememberExpandTypeOption}">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Label}" Foreground="White" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,10,0,0">
