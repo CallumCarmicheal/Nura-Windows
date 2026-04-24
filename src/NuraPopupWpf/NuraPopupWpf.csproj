@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net10.0-windows</TargetFramework>
@@ -9,6 +9,9 @@
 	</PropertyGroup>
 	<ItemGroup>
 	  <None Remove="Resources\Images\NuraphonesMinimalWhiteLogo.png" />
+	</ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\NuraLib\NuraLib.csproj" />
 	</ItemGroup>
 	<ItemGroup>
 	  <Resource Include="Resources\Images\NuraphonesMinimalWhiteLogo.png" />

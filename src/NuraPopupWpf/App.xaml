@@ -7,6 +7,8 @@
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <infra:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+        <infra:SliderValueToOffsetConverter x:Key="SliderValueToOffsetConverter" />
+        <infra:SliderValueToFillWidthConverter x:Key="SliderValueToFillWidthConverter" />
 
         <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#F20A0A0A" />
         <SolidColorBrush x:Key="CardBackgroundBrush" Color="#141414" />
@@ -310,53 +312,62 @@
                                      Margin="4,0,0,0"
                                      HorizontalAlignment="Left"
                                      VerticalAlignment="Center"
-                                     Fill="#FFF7F7F8" />
+                                     Fill="#FFF7F7F8">
+                                <Ellipse.RenderTransform>
+                                    <TranslateTransform x:Name="ThumbTranslateTransform" X="0" />
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="AccentTrack" Property="Opacity" Value="1" />
-                                <Setter TargetName="Thumb" Property="Margin" Value="26,0,0,0" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslateTransform"
+                                                             Storyboard.TargetProperty="X"
+                                                             To="22"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="AccentTrack"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslateTransform"
+                                                             Storyboard.TargetProperty="X"
+                                                             To="0"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="AccentTrack"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
-                            <Trigger Property="IsChecked" Value="False">
-                                <Setter TargetName="AccentTrack" Property="Opacity" Value="0" />
-                                <Setter TargetName="Thumb" Property="Margin" Value="4,0,0,0" />
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.95" />
                             </Trigger>
-                            <EventTrigger RoutedEvent="ToggleButton.Checked">
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <ThicknessAnimation Storyboard.TargetName="Thumb"
-                                                            Storyboard.TargetProperty="Margin"
-                                                            To="26,0,0,0"
-                                                            Duration="0:0:0.16">
-                                            <ThicknessAnimation.EasingFunction>
-                                                <CubicEase EasingMode="EaseOut" />
-                                            </ThicknessAnimation.EasingFunction>
-                                        </ThicknessAnimation>
-                                        <DoubleAnimation Storyboard.TargetName="AccentTrack"
-                                                         Storyboard.TargetProperty="Opacity"
-                                                         To="1"
-                                                         Duration="0:0:0.16" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                            <EventTrigger RoutedEvent="ToggleButton.Unchecked">
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <ThicknessAnimation Storyboard.TargetName="Thumb"
-                                                            Storyboard.TargetProperty="Margin"
-                                                            To="4,0,0,0"
-                                                            Duration="0:0:0.16">
-                                            <ThicknessAnimation.EasingFunction>
-                                                <CubicEase EasingMode="EaseOut" />
-                                            </ThicknessAnimation.EasingFunction>
-                                        </ThicknessAnimation>
-                                        <DoubleAnimation Storyboard.TargetName="AccentTrack"
-                                                         Storyboard.TargetProperty="Opacity"
-                                                         To="0"
-                                                         Duration="0:0:0.16" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="Track" Property="Opacity" Value="1" />
                             </Trigger>
@@ -375,10 +386,124 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Thumb">
-                        <Grid>
-                            <Ellipse Fill="#40FF7AD2" />
-                            <Ellipse Margin="3" Fill="White" />
+                        <Grid RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="ThumbScaleTransform" ScaleX="1" ScaleY="1" />
+                            </Grid.RenderTransform>
+                            <Ellipse x:Name="ThumbGlow" Fill="#36FF7AD2" Opacity="0.9" />
+                            <Ellipse x:Name="ThumbCore" Margin="3" Fill="White" />
                         </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScaleTransform"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1.08"
+                                                             Duration="0:0:0.12">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScaleTransform"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1.08"
+                                                             Duration="0:0:0.12">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbGlow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0.12" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScaleTransform"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1"
+                                                             Duration="0:0:0.14">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScaleTransform"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1"
+                                                             Duration="0:0:0.14">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbGlow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.9"
+                                                             Duration="0:0:0.14" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="ThumbGlow" Property="Fill" Value="#52FF7AD2" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScaleTransform"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1.16"
+                                                             Duration="0:0:0.08">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScaleTransform"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1.16"
+                                                             Duration="0:0:0.08">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbGlow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0.08" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScaleTransform"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1"
+                                                             Duration="0:0:0.12">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScaleTransform"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1"
+                                                             Duration="0:0:0.12">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbGlow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.9"
+                                                             Duration="0:0:0.12" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -397,37 +522,83 @@
             </Setter>
         </Style>
 
-        <Style x:Key="ImmersionSliderStyle" TargetType="Slider">
+        <Style x:Key="ImmersionSliderStyle" TargetType="{x:Type controls:AnimatedSlider}">
             <Setter Property="Height" Value="52" />
             <Setter Property="Foreground" Value="{StaticResource AccentGradientBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="Slider">
+                    <ControlTemplate TargetType="{x:Type controls:AnimatedSlider}">
                         <Grid Margin="0,4">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="24" />
                                 <RowDefinition Height="20" />
                             </Grid.RowDefinitions>
 
-                            <Track x:Name="PART_Track"
-                   Grid.Row="0"
-                   VerticalAlignment="Center">
-                                <Track.DecreaseRepeatButton>
-                                    <RepeatButton Style="{StaticResource SliderTrackRepeatButtonStyle}"
-                                  Height="6"
-                                  Background="{StaticResource AccentGradientBrush}"
-                                  Command="Slider.DecreaseLarge" />
-                                </Track.DecreaseRepeatButton>
-                                <Track.IncreaseRepeatButton>
-                                    <RepeatButton Style="{StaticResource SliderTrackRepeatButtonStyle}"
-                                  Height="6"
-                                  Background="#18FFFFFF"
-                                  Command="Slider.IncreaseLarge" />
-                                </Track.IncreaseRepeatButton>
-                                <Track.Thumb>
-                                    <Thumb Style="{StaticResource SliderThumbStyle}" />
-                                </Track.Thumb>
-                            </Track>
+                            <Grid Grid.Row="0"
+                                  VerticalAlignment="Center"
+                                  Height="24">
+                                <Border x:Name="VisualTrackBackground"
+                                        Height="6"
+                                        CornerRadius="3"
+                                        Background="#18FFFFFF"
+                                        VerticalAlignment="Center" />
+                                <Border x:Name="VisualTrackFill"
+                                        Height="6"
+                                        CornerRadius="3"
+                                        Background="{TemplateBinding Foreground}"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center">
+                                    <Border.Width>
+                                        <MultiBinding Converter="{StaticResource SliderValueToFillWidthConverter}">
+                                            <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="AnimatedValue" />
+                                            <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Minimum" />
+                                            <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Maximum" />
+                                            <Binding ElementName="VisualTrackBackground" Path="ActualWidth" />
+                                            <Binding ElementName="AnimatedThumbVisual" Path="ActualWidth" />
+                                        </MultiBinding>
+                                    </Border.Width>
+                                </Border>
+                                <Thumb x:Name="AnimatedThumbVisual"
+                                       Width="18"
+                                       Height="18"
+                                       Style="{StaticResource SliderThumbStyle}"
+                                       IsHitTestVisible="False"
+                                       HorizontalAlignment="Left"
+                                       VerticalAlignment="Center">
+                                    <Thumb.RenderTransform>
+                                        <TranslateTransform>
+                                            <TranslateTransform.X>
+                                                <MultiBinding Converter="{StaticResource SliderValueToOffsetConverter}">
+                                                    <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="AnimatedValue" />
+                                                    <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Minimum" />
+                                                    <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Maximum" />
+                                                    <Binding ElementName="VisualTrackBackground" Path="ActualWidth" />
+                                                    <Binding ElementName="AnimatedThumbVisual" Path="ActualWidth" />
+                                                </MultiBinding>
+                                            </TranslateTransform.X>
+                                        </TranslateTransform>
+                                    </Thumb.RenderTransform>
+                                </Thumb>
+                                <Track x:Name="PART_Track"
+                                       Opacity="0"
+                                       VerticalAlignment="Center">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Style="{StaticResource SliderTrackRepeatButtonStyle}"
+                                                      Height="24"
+                                                      Background="Transparent"
+                                                      Command="Slider.DecreaseLarge" />
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Style="{StaticResource SliderTrackRepeatButtonStyle}"
+                                                      Height="24"
+                                                      Background="Transparent"
+                                                      Command="Slider.IncreaseLarge" />
+                                    </Track.IncreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb Width="18" Height="18" Opacity="0" />
+                                    </Track.Thumb>
+                                </Track>
+                            </Grid>
 
                             <controls:LabeledTickBar Grid.Row="1"
                                   Margin="0,2,0,0"
