@@ -85,6 +85,50 @@ client.OnLog += (_, args) =>
 };
 ```
 
+## Bootstrap expectations
+
+In practice, most hosts benefit from two startup paths:
+
+- a live bootstrap that loads persisted config, creates `NuraClient`, subscribes to `RequestStateSave`, optionally resumes auth, refreshes devices, and starts monitoring
+- a seeded or demo bootstrap that bypasses `NuraLib` entirely and feeds sample data into the host UI or test harness
+
+Keep the demo path outside the library. `NuraLib` is the live transport and auth surface, not the source of seeded sample data.
+
+Typical live bootstrap:
+
+```csharp
+var config = NuraConfigStore.LoadOrCreate(configPath);
+var client = new NuraClient(new NuraConfigState(config));
+
+client.RequestStateSave += (_, _) =>
+{
+    NuraConfigStore.Save(configPath, client.State.Configuration);
+};
+
+client.OnLog += (_, args) =>
+{
+    Console.WriteLine($"[{args.Level}] {args.Source}: {args.Message}");
+};
+
+var resumed = false;
+
+if (client.Auth.HasStoredCredentials && await client.Auth.HasValidSessionAsync())
+{
+    try
+    {
+        await client.Auth.ResumeAsync();
+        resumed = true;
+    }
+    catch
+    {
+        resumed = false;
+    }
+}
+
+await client.Devices.RefreshAsync();
+await client.Monitoring.StartAsync();
+```
+
 ## Configuration and persistence
 
 The persisted root model is `src/NuraLib/Configuration/NuraConfig.cs`.
@@ -598,10 +642,14 @@ Properties:
 
 - `ProfileId`
 - `Names`
+- `Visualisations`
+- `CurrentVisualisation`
 
 Events:
 
 - `ProfileIdChanged`
+- `NamesChanged`
+- `VisualisationsChanged`
 
 ### Read and change active profile
 
@@ -622,6 +670,48 @@ foreach (var pair in names)
     Console.WriteLine($"Profile {pair.Key}: {pair.Value}");
 }
 ```
+
+### Profile visualisation data
+
+Visualisation support is split into two sources:
+
+- bulk authenticated profile metadata from the online session/bootstrap flow
+- active-profile visualisation data read directly from Bluetooth
+
+The online payload is useful for selector thumbnails because it can populate multiple profile slots without switching profiles on the headset. The Bluetooth path is the source of truth for the currently active profile after connect, refresh, or profile switch.
+
+Read the current active-profile visualisation:
+
+```csharp
+var currentVisual = await connected.Profiles.RetrieveCurrentVisualisationAsync();
+
+if (currentVisual is { Valid: true })
+{
+    Console.WriteLine($"Colour: {currentVisual.Colour}");
+    Console.WriteLine($"Left points: {currentVisual.LeftData.Length}");
+    Console.WriteLine($"Right points: {currentVisual.RightData.Length}");
+}
+```
+
+Refresh the cached visualisation set:
+
+```csharp
+var visuals = await connected.Profiles.RefreshVisualisationsAsync(
+    profileCount: 3,
+    includeOnlineMetadata: true);
+
+foreach (var pair in visuals)
+{
+    Console.WriteLine($"Profile {pair.Key} has cached visual data.");
+}
+```
+
+The cache surface is:
+
+- `connected.Profiles.Visualisations`
+- `connected.Profiles.CurrentVisualisation`
+
+Hosts should treat missing visual data as a normal state. If a profile has no cached visual yet, keep a fallback thumbnail or neutral placeholder rather than forcing hidden profile switches.
 
 ### Profile rename support
 
@@ -753,6 +843,32 @@ A typical pattern is:
 3. provision if needed
 4. `connected.RefreshAsync()`
 5. bind your UI or services to cached state
+
+## Device identity and live status
+
+`NuraDevice.Info.DisplayName` is the preferred host display name.
+
+- If the last known Bluetooth friendly name is available, `DisplayName` uses it.
+- Otherwise it falls back to the normalized device type name.
+
+For live devices, `ConnectedNuraDevice` also exposes runtime status that is useful for hosts:
+
+- `HasLocalSession`
+- `IsMonitoring`
+- `ProvisioningRequired`
+- `OperationStatus`
+
+Relevant events include:
+
+- `IsConnectedChanged`
+- `InfoChanged`
+- `HasPersistentDeviceKeyChanged`
+- `LocalSessionChanged`
+- `MonitoringChanged`
+- `ProvisioningRequiredChanged`
+- `OperationStatusChanged`
+
+`OperationStatus` is the host-facing progress surface for long-running device work. In particular, provisioning emits raw backend stage codes such as `session/start`, `session/start_1`, and `session/start_4`. Hosts can display those directly instead of scraping logger output.
 
 ## Monitoring
 
@@ -1001,6 +1117,8 @@ Implemented and usable:
 - local encrypted handshake
 - profile read and profile selection
 - profile-name read
+- current-profile Bluetooth visualisation read
+- cached multi-profile visual metadata from authenticated online session payloads
 - ANC state read/write
 - ANC level read/write
 - global ANC read/write
@@ -1051,6 +1169,8 @@ The boundary is:
 
 - `NuraLib` owns protocol, auth, provisioning, transport, and device operations
 - your GUI layer owns view state, command enablement, threading, retries, and persistence timing
+
+If the host also supports a non-live preview mode, keep that as a separate bootstrap path that constructs sample UI state without creating `NuraClient`.
 
 ### View-model split
 

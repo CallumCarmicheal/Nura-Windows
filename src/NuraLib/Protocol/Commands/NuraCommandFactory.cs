@@ -15,6 +15,8 @@ internal static class NuraCommandFactory {
 
     public static GetCurrentProfileIdCommand CreateGetCurrentProfileId() => new();
 
+    public static GetVisualisationDataCommand CreateGetVisualisationData() => new();
+
     public static GetProfileNameCommand CreateGetProfileName(int profileId) => new(profileId);
 
     public static SelectProfileCommand CreateSelectProfile(int profileId) => new(profileId);
@@ -37,6 +39,11 @@ internal static class NuraCommandFactory {
     public static GetKickitEnabledCommand CreateGetKickitEnabled() => new();
 
     public static SetKickitEnabledCommand CreateSetKickitEnabled(bool enabled) => new(enabled);
+
+    public static GetKickitParamsCommand CreateGetKickitParams(int profileId) => new(profileId);
+
+    public static SetKickitParamsCommand CreateSetKickitParams(int profileId, NuraImmersionLevel level) =>
+        new(profileId, level);
 
     public static GetKickitStateCommand CreateGetKickitState(int profileId) => new(profileId);
 

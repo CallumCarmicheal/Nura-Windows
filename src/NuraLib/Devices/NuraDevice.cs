@@ -6,18 +6,20 @@ namespace NuraLib.Devices;
 /// Represents a known Nura device, whether currently connected or only present in persisted configuration.
 /// </summary>
 public class NuraDevice {
+    private NuraDeviceInfo _info = null!;
+    private bool _isConnected;
 
     internal NuraDeviceConfig Config { get; private set; } = null!;
 
     /// <summary>
     /// Gets static and capability information about the device.
     /// </summary>
-    public NuraDeviceInfo Info { get; private set; } = null!;
+    public NuraDeviceInfo Info => _info;
 
     /// <summary>
     /// Gets a value indicating whether the device is currently present in the active Bluetooth inventory.
     /// </summary>
-    public bool IsConnected { get; internal set; }
+    public bool IsConnected => _isConnected;
 
     /// <summary>
     /// Gets a value indicating whether a persistent device key is stored for this device.
@@ -34,6 +36,12 @@ public class NuraDevice {
     /// </summary>
     public DateTimeOffset? LastProvisionedUtc => Config.LastProvisionedUtc;
 
+    public event EventHandler<NuraValueChangedEventArgs<bool>>? IsConnectedChanged;
+
+    public event EventHandler? InfoChanged;
+
+    public event EventHandler<NuraValueChangedEventArgs<bool>>? HasPersistentDeviceKeyChanged;
+
 
     internal NuraDevice(NuraDeviceConfig config) {
         ApplyConfig(config);
@@ -43,14 +51,26 @@ public class NuraDevice {
         ApplyConfig(config);
     }
 
+    internal void UpdateConnectionState(bool isConnected) {
+        var previous = _isConnected;
+        _isConnected = isConnected;
+        if (previous != isConnected) {
+            IsConnectedChanged?.Invoke(this, new NuraValueChangedEventArgs<bool>(previous, isConnected));
+        }
+    }
+
     private void ApplyConfig(NuraDeviceConfig config) {
+        var previousInfo = _info;
+        var previousHasPersistentDeviceKey = !ReferenceEquals(Config, null) && !string.IsNullOrWhiteSpace(Config.DeviceKey);
+
         Config = config;
         var deviceType = NuraDeviceCapabilities.ResolveType(config.Type);
         var capabilityInfo = NuraDeviceCapabilities.GetCapabilityInfo(deviceType, config.FirmwareVersion);
-        Info = new NuraDeviceInfo {
+        _info = new NuraDeviceInfo {
             TypeTag = NuraDeviceCapabilities.GetTypeTag(deviceType),
             TypeName = NuraDeviceCapabilities.GetDebugName(deviceType),
             DeviceType = deviceType,
+            FriendlyName = config.FriendlyName,
             DeviceAddress = config.DeviceAddress,
             Serial = config.DeviceSerial,
             FirmwareVersion = config.FirmwareVersion,
@@ -63,5 +83,14 @@ public class NuraDevice {
             Capabilities = capabilityInfo,
             SupportedButtonGestures = capabilityInfo.ButtonGestures
         };
+
+        if (previousInfo is not null && !Equals(previousInfo, _info)) {
+            InfoChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        var currentHasPersistentDeviceKey = !string.IsNullOrWhiteSpace(config.DeviceKey);
+        if (previousInfo is not null && previousHasPersistentDeviceKey != currentHasPersistentDeviceKey) {
+            HasPersistentDeviceKeyChanged?.Invoke(this, new NuraValueChangedEventArgs<bool>(previousHasPersistentDeviceKey, currentHasPersistentDeviceKey));
+        }
     }
 }

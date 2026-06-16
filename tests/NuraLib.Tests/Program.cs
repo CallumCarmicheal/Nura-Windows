@@ -172,6 +172,26 @@ internal sealed class CommandRoundTripTests {
             assertResponse: response => AssertTrue(response.Length == 0, nameof(KickitAndSpatialCommands_RoundTrip), "Expected empty kickit ack payload."));
 
         AssertAuthenticatedRoundTrip(
+            NuraCommandFactory.CreateGetKickitParams(1),
+            CreateRuntime(),
+            expectedPlainRequestHex: "004d01",
+            responsePlainPayloadHex: "00040002",
+            assertResponse: response => {
+                AssertEqual((byte)0x04, response.DrcRaw, nameof(KickitAndSpatialCommands_RoundTrip));
+                AssertEqual((byte)0x00, response.LpfRaw, nameof(KickitAndSpatialCommands_RoundTrip));
+                AssertEqual((byte)0x02, response.GainRaw, nameof(KickitAndSpatialCommands_RoundTrip));
+                AssertTrue(response.TryToImmersionLevel(out var level), nameof(KickitAndSpatialCommands_RoundTrip), "Expected classic kickit params to map to an immersion level.");
+                AssertEqual(NuraImmersionLevel.Positive4, level, nameof(KickitAndSpatialCommands_RoundTrip));
+            });
+
+        AssertAuthenticatedRoundTrip(
+            NuraCommandFactory.CreateSetKickitParams(1, NuraImmersionLevel.Negative1),
+            CreateRuntime(),
+            expectedPlainRequestHex: "004c01000401",
+            responsePlainPayloadHex: "00",
+            assertResponse: response => AssertTrue(response.Length == 0, nameof(KickitAndSpatialCommands_RoundTrip), "Expected empty classic kickit params ack payload."));
+
+        AssertAuthenticatedRoundTrip(
             NuraCommandFactory.CreateGetKickitState(1),
             CreateRuntime(),
             expectedPlainRequestHex: "011e01",

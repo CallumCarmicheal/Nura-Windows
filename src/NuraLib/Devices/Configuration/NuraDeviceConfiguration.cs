@@ -13,6 +13,10 @@ public sealed class NuraDeviceConfiguration(ConnectedNuraDevice nuraDevice) {
     private bool? _multipointEnabled;
     private NuraVoicePromptGain? _voicePromptGain;
 
+    public event EventHandler<NuraValueChangedEventArgs<NuraButtonConfiguration?>>? TouchButtonsChanged;
+
+    public event EventHandler<NuraValueChangedEventArgs<NuraDialConfiguration?>>? DialChanged;
+
     /// <summary>
     /// Gets the last known touch-button configuration.
     /// </summary>
@@ -32,11 +36,19 @@ public sealed class NuraDeviceConfiguration(ConnectedNuraDevice nuraDevice) {
     public NuraVoicePromptGain? VoicePromptGain => _voicePromptGain;
 
     internal void UpdateTouchButtons(NuraButtonConfiguration? configuration) {
+        var previous = _touchButtons;
         _touchButtons = configuration;
+        if (!Equals(previous, configuration)) {
+            TouchButtonsChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraButtonConfiguration?>(previous, configuration));
+        }
     }
 
     internal void UpdateDial(NuraDialConfiguration? configuration) {
+        var previous = _dial;
         _dial = configuration;
+        if (!Equals(previous, configuration)) {
+            DialChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraDialConfiguration?>(previous, configuration));
+        }
     }
 
     internal void UpdateHeadDetectionEnabled(bool? enabled) {

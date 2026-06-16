@@ -44,6 +44,13 @@ internal sealed class RfcommHeadsetTransport : IHeadsetTransport {
                 return response;
             }
 
+            if ((GaiaCommandId)response.CommandId == frame.CommandId && response.Status != 0x00) {
+                _logger.Debug(
+                    Source,
+                    $"Received same-command error response 0x{response.CommandId:x4} status=0x{response.Status:x2} while waiting for 0x{(ushort)expectedResponse:x4}.");
+                return response;
+            }
+
             _logger.Debug(Source, $"Ignoring unexpected response command 0x{response.CommandId:x4} while waiting for 0x{(ushort)expectedResponse:x4}.");
         }
     }

@@ -12,13 +12,13 @@ public sealed class WindowPreferencesService {
 
     private readonly string _preferencesPath;
 
-    public WindowPreferencesService() {
-        var preferencesDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "NuraPopupWpf");
+    public WindowPreferencesService(string preferencesPath) {
+        ArgumentException.ThrowIfNullOrWhiteSpace(preferencesPath);
 
+        var preferencesDirectory = Path.GetDirectoryName(preferencesPath)
+            ?? throw new InvalidOperationException("Window preferences path must include a directory.");
         Directory.CreateDirectory(preferencesDirectory);
-        _preferencesPath = Path.Combine(preferencesDirectory, "window-preferences.json");
+        _preferencesPath = preferencesPath;
     }
 
     public WindowPreferences Load() {

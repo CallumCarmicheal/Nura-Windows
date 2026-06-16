@@ -6,6 +6,9 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<LangVersion>latest</LangVersion>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+		<GenerateTargetPlatformAttribute>false</GenerateTargetPlatformAttribute>
 	</PropertyGroup>
 	<ItemGroup>
 	  <None Remove="Resources\Images\NuraphonesMinimalWhiteLogo.png" />

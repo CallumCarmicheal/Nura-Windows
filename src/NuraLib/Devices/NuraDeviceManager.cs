@@ -56,7 +56,7 @@ public sealed class NuraDeviceManager {
         _knownDevices.Clear();
         foreach (var device in _state.Configuration.Devices) {
             var stableDevice = CreateConnectedDevice(device);
-            stableDevice.IsConnected = false;
+            stableDevice.UpdateConnectionState(false);
             _knownDevices[GetIdentityKey(device)] = stableDevice;
         }
 
@@ -95,7 +95,9 @@ public sealed class NuraDeviceManager {
 
     private async Task RefreshCoreAsync(CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-        _logger.Information(Source, "Refreshing connected Nura devices.");
+#if (TRACE)
+        //_logger.Trace(Source, "Refreshing connected Nura devices.");
+#endif
 
         var discovered = BluetoothDeviceProbe.FindConnectedNuraDevices();
         var knownByAddress = _state.Configuration.Devices.ToDictionary(
@@ -122,6 +124,7 @@ public sealed class NuraDeviceManager {
                         Type = deviceType,
                         DeviceAddress = device.Address,
                         DeviceSerial = details.DeviceInfo.SerialNumber.ToString(),
+                        FriendlyName = device.Name,
                         FirmwareVersion = firmwareVersion,
                         MaxPacketLengthHint = details.DeviceInfo.SerialNumber switch {
                             >= 0 and < 20000000 => 182,
@@ -138,6 +141,7 @@ public sealed class NuraDeviceManager {
                         Type = device.Name,
                         DeviceAddress = device.Address,
                         DeviceSerial = device.Address.Replace(":", string.Empty, StringComparison.Ordinal),
+                        FriendlyName = device.Name,
                         FirmwareVersion = 0,
                         MaxPacketLengthHint = 182,
                         IsNuraNowDevice = false,
@@ -147,6 +151,10 @@ public sealed class NuraDeviceManager {
                     merged.RemoveAll(existing => string.Equals(existing.DeviceAddress, config.DeviceAddress, StringComparison.OrdinalIgnoreCase));
                     merged.Add(config);
                 }
+            } else if (!string.Equals(config.FriendlyName, device.Name, StringComparison.Ordinal)) {
+                config = config with { FriendlyName = device.Name };
+                merged.RemoveAll(existing => string.Equals(existing.DeviceAddress, config.DeviceAddress, StringComparison.OrdinalIgnoreCase));
+                merged.Add(config);
             }
 
             connected.Add(config);

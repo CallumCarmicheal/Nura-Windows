@@ -32,7 +32,8 @@ public sealed class NuraConfigState {
     public void ReplaceConfiguration(
         NuraConfig configuration,
         NuraStateSaveReason reason = NuraStateSaveReason.Configuration,
-        string? message = null) {
+        string? message = null
+    ) {
         Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         RequestSave(reason, message: message);
     }
@@ -46,7 +47,8 @@ public sealed class NuraConfigState {
     public void RequestSave(
         NuraStateSaveReason reason,
         string? deviceSerial = null,
-        string? message = null) {
+        string? message = null
+    ) {
         StateSaveRequested?.Invoke(
             this,
             new NuraStateSaveRequestedEventArgs(reason, deviceSerial, message));

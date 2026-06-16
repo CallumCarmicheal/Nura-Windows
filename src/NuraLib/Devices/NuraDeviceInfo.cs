@@ -20,6 +20,11 @@ public sealed record class NuraDeviceInfo {
     public NuraDeviceType DeviceType { get; init; } = NuraDeviceType.Unknown;
 
     /// <summary>
+    /// Gets the last known Bluetooth-friendly device name.
+    /// </summary>
+    public string FriendlyName { get; init; } = string.Empty;
+
+    /// <summary>
     /// Gets the Bluetooth device address.
     /// </summary>
     public string DeviceAddress { get; init; } = string.Empty;
@@ -84,6 +89,11 @@ public sealed record class NuraDeviceInfo {
     /// Gets the supported button-function families.
     /// </summary>
     public NuraButtonFunctionSupport SupportedButtonFunctions => Capabilities.ButtonFunctions;
+
+    /// <summary>
+    /// Gets the preferred UI display name for the device.
+    /// </summary>
+    public string DisplayName => string.IsNullOrWhiteSpace(FriendlyName) ? TypeName : FriendlyName;
 
     /// <summary>
     /// Determines whether the device supports a specific feature flag.

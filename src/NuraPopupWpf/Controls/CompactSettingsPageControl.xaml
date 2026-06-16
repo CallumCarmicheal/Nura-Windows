@@ -5,6 +5,17 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:models="clr-namespace:NuraPopupWpf.Models"
              mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SettingsComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Background" Value="#10FFFFFF" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="#22FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </UserControl.Resources>
     <StackPanel>
         <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
             <StackPanel>
@@ -719,62 +730,170 @@
                             </Style.Triggers>
                         </Style>
                     </StackPanel.Style>
-                <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
+                            Visibility="{Binding ShowCurrentDeviceActionPanel, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel>
-                            <TextBlock Text="ANC" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                            <TextBlock Text="{Binding CurrentDevice.AncStatusText}" Foreground="White" FontSize="13" d:Text="..." />
+                            <TextBlock Text="LIVE CONTROL" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="{Binding CurrentDeviceActionText}" Foreground="White" FontSize="13" TextWrapping="Wrap" />
+                            <WrapPanel Margin="0,10,0,0">
+                                <Button Command="{Binding RefreshDevicesCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,8">
+                                    <TextBlock Text="Refresh devices" Foreground="White" />
+                                </Button>
+                                <Button Command="{Binding ConnectCurrentDeviceCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,8">
+                                    <TextBlock Text="Connect" Foreground="White" />
+                                </Button>
+                                <Button Command="{Binding RefreshCurrentDeviceCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,8">
+                                    <TextBlock Text="Refresh state" Foreground="White" />
+                                </Button>
+                                <Button Command="{Binding ProvisionCurrentDeviceCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,8">
+                                    <TextBlock Text="Provision" Foreground="White" />
+                                </Button>
+                            </WrapPanel>
                         </StackPanel>
-                        <ToggleButton Grid.Column="1"
-                                      IsChecked="{Binding CurrentDevice.AncEnabled, Mode=TwoWay}"
-                                      Style="{StaticResource SwitchToggleButtonStyle}" />
-                    </Grid>
-                </Border>
-                <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                    </Border>
+                    <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
+                            Visibility="{Binding ShowAncControl, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="ANC" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                                <TextBlock Text="{Binding CurrentDevice.AncStatusText}" Foreground="White" FontSize="13" d:Text="..." />
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1"
+                                          IsChecked="{Binding CurrentDevice.AncEnabled, Mode=TwoWay}"
+                                          Style="{StaticResource SwitchToggleButtonStyle}" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
+                            Visibility="{Binding ShowPassthroughControl, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Social mode" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                                <TextBlock Text="{Binding CurrentDevice.SocialModeText}" Foreground="White" FontSize="13" />
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1"
+                                          IsChecked="{Binding CurrentDevice.SocialMode, Mode=TwoWay}"
+                                          Style="{StaticResource SwitchToggleButtonStyle}" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
+                            Visibility="{Binding ShowAncLevelControl, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel>
-                            <TextBlock Text="Enable EU volume limiter" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                            <TextBlock Text="Protect output levels" Foreground="White" FontSize="13" />
+                            <TextBlock Text="ANC level" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="{Binding CurrentAncLevelText}" Foreground="White" FontSize="13" Margin="0,2,0,0" />
+                            <Slider Minimum="0"
+                                    Maximum="4"
+                                    TickFrequency="1"
+                                    IsSnapToTickEnabled="True"
+                                    Value="{Binding CurrentAncLevelValue, Mode=TwoWay}"
+                                    Margin="0,10,0,0" />
                         </StackPanel>
-                        <ToggleButton Grid.Column="1"
-                                      IsChecked="{Binding CurrentDevice.EuVolumeLimiter, Mode=TwoWay}"
-                                      Style="{StaticResource SwitchToggleButtonStyle}" />
-                    </Grid>
-                </Border>
-                <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Serial number" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" VerticalAlignment="Center" />
-                        <Button Grid.Column="1"
-                                Command="{Binding ToggleSerialVisibilityCommand}"
-                                Style="{StaticResource ValuePillButtonStyle}"
-                                HorizontalAlignment="Right"
-                                Padding="12,6">
-                            <TextBlock Margin="16,8" Text="{Binding DisplaySerial}" Foreground="White" FontFamily="Consolas" FontSize="12" d:Text="..." />
-                        </Button>
-                    </Grid>
-                </Border>
-                <Border Style="{StaticResource InfoChipBorderStyle}">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Software version" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="{Binding CurrentSoftwareVersion}" Foreground="White" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                    </Grid>
-                </Border>
+                    </Border>
+                    <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
+                            Visibility="{Binding ShowSpatialControl, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Spatial audio" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                                <TextBlock Text="Toggle immersive spatial processing" Foreground="White" FontSize="13" />
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1"
+                                          IsChecked="{Binding CurrentDevice.SpatialEnabled, Mode=TwoWay}"
+                                          Style="{StaticResource SwitchToggleButtonStyle}" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
+                            Visibility="{Binding ShowTouchButtonControls, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="Touch buttons" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="Per-side gesture bindings from the live SDK surface." Foreground="White" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0" />
+                            <TextBlock Text="Left single tap" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,10,0,0" />
+                            <ComboBox ItemsSource="{Binding SingleTapButtonOptions}" SelectedItem="{Binding SelectedLeftSingleTapButtonFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                            <TextBlock Text="Right single tap" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
+                            <ComboBox ItemsSource="{Binding SingleTapButtonOptions}" SelectedItem="{Binding SelectedRightSingleTapButtonFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                            <StackPanel Visibility="{Binding ShowDoubleTapBindings, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="Left double tap" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
+                                <ComboBox ItemsSource="{Binding DoubleTapButtonOptions}" SelectedItem="{Binding SelectedLeftDoubleTapButtonFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                                <TextBlock Text="Right double tap" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
+                                <ComboBox ItemsSource="{Binding DoubleTapButtonOptions}" SelectedItem="{Binding SelectedRightDoubleTapButtonFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                            </StackPanel>
+                            <StackPanel Visibility="{Binding ShowTripleTapBindings, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="Left triple tap" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
+                                <ComboBox ItemsSource="{Binding TripleTapButtonOptions}" SelectedItem="{Binding SelectedLeftTripleTapButtonFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                                <TextBlock Text="Right triple tap" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
+                                <ComboBox ItemsSource="{Binding TripleTapButtonOptions}" SelectedItem="{Binding SelectedRightTripleTapButtonFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                            </StackPanel>
+                            <StackPanel Visibility="{Binding ShowTapAndHoldBindings, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="Left tap and hold" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
+                                <ComboBox ItemsSource="{Binding TapAndHoldButtonOptions}" SelectedItem="{Binding SelectedLeftTapAndHoldButtonFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                                <TextBlock Text="Right tap and hold" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
+                                <ComboBox ItemsSource="{Binding TapAndHoldButtonOptions}" SelectedItem="{Binding SelectedRightTapAndHoldButtonFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
+                            Visibility="{Binding ShowDialControls, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="Dial bindings" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="Available on supported NuraLoop-family devices." Foreground="White" FontSize="13" Margin="0,2,0,0" />
+                            <TextBlock Text="Left dial" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,10,0,0" />
+                            <ComboBox ItemsSource="{Binding DialFunctionOptions}" SelectedItem="{Binding SelectedLeftDialFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                            <TextBlock Text="Right dial" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
+                            <ComboBox ItemsSource="{Binding DialFunctionOptions}" SelectedItem="{Binding SelectedRightDialFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
+                            Visibility="{Binding ShowEuVolumeLimiterControl, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Enable EU volume limiter" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                                <TextBlock Text="Protect output levels" Foreground="White" FontSize="13" />
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1"
+                                          IsChecked="{Binding CurrentDevice.EuVolumeLimiter, Mode=TwoWay}"
+                                          Style="{StaticResource SwitchToggleButtonStyle}" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Serial number" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Command="{Binding ToggleSerialVisibilityCommand}"
+                                    Style="{StaticResource ValuePillButtonStyle}"
+                                    HorizontalAlignment="Right"
+                                    Padding="12,6">
+                                <TextBlock Margin="16,8" Text="{Binding DisplaySerial}" Foreground="White" FontFamily="Consolas" FontSize="12" d:Text="..." />
+                            </Button>
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource InfoChipBorderStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Software version" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding CurrentSoftwareVersion}" Foreground="White" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
                 </StackPanel>
             </StackPanel>
         </Border>

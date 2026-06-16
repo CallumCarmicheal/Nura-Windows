@@ -215,7 +215,8 @@ internal sealed class NuraAuthApiClient : IDisposable {
         NuraAuthState state,
         string endpoint,
         long appStartTimeUnixMilliseconds,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken
+    ) {
         var payload = BuildAppContextPayload(state, appStartTimeUnixMilliseconds);
 
         return await SendAsync(
@@ -398,7 +399,8 @@ internal sealed class NuraAuthApiClient : IDisposable {
 
     private static Dictionary<string, object?> BuildAppContextPayload(
         NuraAuthState state,
-        long appStartTimeUnixMilliseconds) {
+        long appStartTimeUnixMilliseconds
+    ) {
         return new Dictionary<string, object?>(StringComparer.Ordinal) {
             ["uuid"] = state.Uuid,
             ["os"] = 1,

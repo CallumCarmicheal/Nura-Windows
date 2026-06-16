@@ -50,6 +50,16 @@ internal static class NuraLocalSessionSupport {
         return profileId;
     }
 
+    public static async Task<NuraProfileVisualisationData> ReadVisualisationDataAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetVisualisationData();
+        var visualisation = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"visualisation.command={command.Name}");
+        return visualisation;
+    }
+
     public static async Task<string> ReadProfileNameAsync(
         ConnectedNuraDeviceSession session,
         NuraClientLogger logger,
@@ -172,6 +182,29 @@ internal static class NuraLocalSessionSupport {
         var ack = await session.ExecuteAsync(command, cancellationToken);
         logger.Trace(Source, $"kickit_enabled_set.command={command.Name}");
         logger.Trace(Source, $"kickit_enabled_set.ack.hex={HexEncoding.Format(ack)}");
+    }
+
+    public static async Task<NuraClassicKickitParams> ReadKickitParamsAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetKickitParams(profileId);
+        var parameters = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"kickit_params.command={command.Name}");
+        return parameters;
+    }
+
+    public static async Task SetKickitParamsAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        int profileId,
+        NuraImmersionLevel level,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateSetKickitParams(profileId, level);
+        var ack = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"kickit_params_set.command={command.Name}");
+        logger.Trace(Source, $"kickit_params_set.ack.hex={HexEncoding.Format(ack)}");
     }
 
     public static async Task<NuraKickitState> ReadKickitStateAsync(

@@ -60,7 +60,8 @@ internal sealed class ActionFlowInitToStart3 : IAction {
         NuraAuthState state,
         string authPath,
         NuraAuthApiClient client,
-        SessionLogger logger) {
+        SessionLogger logger
+    ) {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         logger.WriteLine("flow.step=app-session");
         var result = await client.AppSessionAsync(state, "app/session", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), cts.Token);

@@ -62,6 +62,7 @@ public sealed class NuraAuthManager {
 
         email = email.Trim();
         _logger.Information(Source, $"Requesting login email code for {email}.");
+
         var result = await _apiClient.SendLoginEmailAsync(BuildApiState(), email, cancellationToken);
         ThrowForFailure(result, "Email-code request failed.");
         PersistAuthentication(
@@ -122,7 +123,27 @@ public sealed class NuraAuthManager {
             message: "Refreshed authenticated session using validate-token.");
     }
 
+    /// <summary>
+    /// Clears the stored authenticated session and resets the in-memory runtime state.
+    /// </summary>
+    /// <param name="clearEmail">When <see langword="true"/>, also removes the remembered email address.</param>
+    public void ClearStoredSession(bool clearEmail = true) {
+        var currentConfig = _state.Configuration;
+        var currentAuth = currentConfig.Auth;
+        var nextAuth = new Configuration.NuraAuthConfig {
+            UserEmail = clearEmail ? null : currentAuth.UserEmail
+        };
+
+        _runtime = new NuraAuthApiState();
+        _state.ReplaceConfiguration(
+            currentConfig with { Auth = nextAuth },
+            NuraStateSaveReason.Authentication,
+            "Cleared stored authenticated session.");
+    }
+
     internal string? CurrentAppEncKey => _runtime.AppEncKey;
+
+    internal int? CurrentBluetoothSessionId => _runtime.BluetoothSessionId;
 
     internal async Task<int?> EnsureProvisioningReadyAsync(CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
@@ -134,14 +155,15 @@ public sealed class NuraAuthManager {
         return _runtime.UserSessionId;
     }
 
-    internal async Task<AuthCallResult> StartProvisioningSessionAsync(
+    internal async Task<AuthCallResult> StartDeviceSessionAsync(
         int serialNumber,
         int firmwareVersion,
         int maxPacketLength,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken
+    ) {
         var userSessionId = await EnsureProvisioningReadyAsync(cancellationToken);
         if (userSessionId is null) {
-            throw new InvalidOperationException("authenticated user session is required for provisioning");
+            throw new InvalidOperationException("authenticated user session is required for session-start");
         }
 
         var result = await _apiClient.SessionStartAsync(
@@ -150,28 +172,36 @@ public sealed class NuraAuthManager {
             firmwareVersion,
             maxPacketLength,
             userSessionId.Value,
-            cancellationToken);
+            cancellationToken
+        );
+
         ThrowForFailure(result, "Session-start request failed.");
         PersistAuthentication(
             emailAddress: _state.Configuration.Auth.UserEmail,
             result,
             fallbackAuthUid: _state.Configuration.Auth.AuthUid,
-            message: "Updated authentication during provisioning session-start.");
+            message: "Updated authentication during session-start.");
         return result;
+    }
+
+    internal async Task<AuthCallResult> StartProvisioningSessionAsync(
+        int serialNumber,
+        int firmwareVersion,
+        int maxPacketLength,
+        CancellationToken cancellationToken
+    ) {
+        return await StartDeviceSessionAsync(serialNumber, firmwareVersion, maxPacketLength, cancellationToken);
     }
 
     internal async Task<AuthCallResult> ContinueProvisioningAsync(
         string endpoint,
         int sessionId,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> packets,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken
+    ) {
         cancellationToken.ThrowIfCancellationRequested();
-        var result = await _apiClient.AutomatedEntryAsync(
-            BuildApiState(),
-            endpoint,
-            sessionId,
-            packets,
-            cancellationToken);
+        var result = await _apiClient.AutomatedEntryAsync(BuildApiState(), endpoint, sessionId, packets,cancellationToken);
+
         ThrowForFailure(result, $"Provisioning continuation failed for endpoint {endpoint}.");
         PersistAuthentication(
             emailAddress: _state.Configuration.Auth.UserEmail,
@@ -195,6 +225,7 @@ public sealed class NuraAuthManager {
 
     private NuraAuthApiState BuildApiState() {
         var auth = _state.Configuration.Auth;
+
         return _runtime with {
             ApiBase = _state.Configuration.ApiBase,
             Uuid = _state.Configuration.Uuid,
@@ -210,7 +241,8 @@ public sealed class NuraAuthManager {
         string? emailAddress,
         AuthCallResult result,
         string? fallbackAuthUid,
-        string message) {
+        string message
+    ) {
         ApplyRuntimeState(result);
 
         var currentConfig = _state.Configuration;

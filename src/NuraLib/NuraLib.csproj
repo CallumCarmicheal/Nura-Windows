@@ -5,6 +5,9 @@
 		<RootNamespace>NuraLib</RootNamespace>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+		<GenerateTargetPlatformAttribute>false</GenerateTargetPlatformAttribute>
 	</PropertyGroup>
 
 </Project>

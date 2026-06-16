@@ -1,26 +1,30 @@
-using Microsoft.VisualBasic.FileIO;
-
+using NuraLib;
+using NuraLib.Devices;
+using NuraPopupWpf.Bootstrap;
 using NuraPopupWpf.Infrastructure;
 using NuraPopupWpf.Models;
 using NuraPopupWpf.Services;
 
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 
 namespace NuraPopupWpf.ViewModels;
 
-public sealed class MainViewModel : ObservableObject {
+public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     private const int MinExportRenderSize = 4;
     private const int MaxExportRenderSize = 12288;
+    private const string EmptyDeviceId = "__empty__";
 
     private readonly NuraProfileRenderer _renderer = new();
     private readonly HearingProfileExportService _profileExportService = new();
-    private readonly WindowPreferencesService _windowPreferencesService = new();
+    private readonly WindowPreferencesService _windowPreferencesService;
     private readonly ObservableCollection<string> _modes = new ObservableCollection<string>(new[] { "Neutral", "Personalised" });
     private readonly ObservableCollection<WindowAnchorOption> _windowAnchorOptions;
     private readonly ObservableCollection<WindowAnchorEdgeOption> _windowAnchorEdgeOptions;
@@ -39,7 +43,7 @@ public sealed class MainViewModel : ObservableObject {
 
     private bool _isExpanded;
     private bool _isDevicePage = true;
-    private DeviceModel _currentDevice = null!;
+    private NuraDeviceViewModel _currentDevice = null!;
     private ProfileModel _currentProfile = null!;
     private ProfileModel _displayedProfile = null!;
     private double _displayedModeProgress = 1.0;
@@ -68,31 +72,20 @@ public sealed class MainViewModel : ObservableObject {
     private WindowAnchorEdgeOption _selectedWindowAnchorEdgeOption = null!;
     private RememberExpandTypeOption _selectedRememberExpandTypeOption = null!;
 
-    public MainViewModel() {
+    private MainViewModel(PopupAppStoragePaths storagePaths) {
+        _windowPreferencesService = new WindowPreferencesService(storagePaths.WindowPreferencesPath);
         _windowPreferences = _windowPreferencesService.Load();
         _windowAnchorOptions = new ObservableCollection<WindowAnchorOption>(BuildWindowAnchorOptions());
         _windowAnchorEdgeOptions = new ObservableCollection<WindowAnchorEdgeOption>(BuildWindowAnchorEdgeOptions());
         _rememberExpandTypeOptions = new ObservableCollection<RememberExpandTypeOption>(BuildRememberExpandTypeOptions());
         Profiles = BuildProfiles();
-        Devices = new ObservableCollection<DeviceModel>(BuildDevices());
-        _devicePriorityIds.AddRange(Devices.Select(device => device.Id));
-
-        foreach (var device in Devices) {
-            device.PropertyChanged += OnDevicePropertyChanged;
-        }
+        Devices = [];
 
         foreach (var profile in Profiles.Values) {
             profile.Thumbnail = _renderer.RenderThumbnail(profile, 20);
         }
 
-        _currentDevice = Devices[0];
-        _currentProfile = _currentDevice.Profiles[0];
-        _displayedProfile = _currentProfile;
-        _displayedModeProgress = 1.0;
-        _visualFromProfile = _currentProfile;
-        _visualToProfile = _currentProfile;
-        _visualProfileBlendProgress = 1.0;
-        _visualModeProgress = 1.0;
+        InitializeEmptyCurrentSelection();
         _selectedWindowAnchorOption = _windowAnchorOptions.FirstOrDefault(option => option.Mode == _windowPreferences.AnchorMode) ?? _windowAnchorOptions[0];
         _selectedWindowAnchorEdgeOption = _windowAnchorEdgeOptions.FirstOrDefault(option => option.Edge == _windowPreferences.AnchorEdge) ?? _windowAnchorEdgeOptions.First(option => option.Edge == WindowAnchorEdge.Center);
         _selectedRememberExpandTypeOption = _rememberExpandTypeOptions.FirstOrDefault(option => option.ExpandType == _windowPreferences.RememberExpandType) ?? _rememberExpandTypeOptions[0];
@@ -127,9 +120,11 @@ public sealed class MainViewModel : ObservableObject {
                 SelectedWindowAnchorEdgeOption = _windowAnchorEdgeOptions.First(option => option.Edge == edge);
             }
         });
+
+        InitializeRuntimeExtensions();
     }
 
-    public ObservableCollection<DeviceModel> Devices { get; }
+    public ObservableCollection<NuraDeviceViewModel> Devices { get; }
 
     public IReadOnlyDictionary<string, ProfileModel> Profiles { get; }
 
@@ -223,7 +218,7 @@ public sealed class MainViewModel : ObservableObject {
         private set => SetProperty(ref _authenticationStatusText, value);
     }
 
-    public DeviceModel CurrentDevice {
+    public NuraDeviceViewModel CurrentDevice {
         get => _currentDevice;
         set {
             var shouldPromote = OverflowDevices.Any(device => device.Id == value.Id);
@@ -256,9 +251,20 @@ public sealed class MainViewModel : ObservableObject {
             ShowDisconnectedDeviceProfilePreview = false;
 
             if (!_currentDevice.Profiles.Contains(_currentProfile)) {
-                CurrentProfile = _currentDevice.Profiles[0];
+                SyncCurrentProfileSelectionFromCurrentDevice(animate: false);
             } else {
                 UpdateProfileImage();
+            }
+
+            RefreshCurrentDeviceBindings();
+            OnPropertyChanged(nameof(CurrentDeviceActionText));
+
+            if (CurrentDevice.IsLive && CurrentDevice.IsConnected && CurrentDevice.CanUseLocalCommands) {
+                _ = CurrentDevice.EnsureReadyAsync(
+                    ConnectToNura,
+                    HasAuthenticatedWithNura,
+                    forceProvision: false,
+                    refreshAfterConnect: true);
             }
         }
     }
@@ -274,6 +280,23 @@ public sealed class MainViewModel : ObservableObject {
 
             IsCompactProfileSelectorOpen = false;
             StartProfileAnimation(profileChanged: true, modeChanged: false);
+
+            if (_suppressProfileSelectionApply) {
+                return;
+            }
+
+            var profileId = Math.Max(0, CurrentProfiles.ToList().IndexOf(value));
+            if (CurrentDevice.IsLive) {
+                if (!CurrentDevice.CanUseLocalCommands || CurrentDevice.IsBusy) {
+                    return;
+                }
+
+                if (CurrentDevice.CurrentProfileId == profileId) {
+                    return;
+                }
+            }
+
+            _ = CurrentDevice.SelectProfileByIndexAsync(profileId);
         }
     }
 
@@ -377,7 +400,11 @@ public sealed class MainViewModel : ObservableObject {
 
     public bool ConnectToNura {
         get => _connectToNura;
-        set => SetProperty(ref _connectToNura, value);
+        set {
+            if (SetProperty(ref _connectToNura, value)) {
+                UpdateAllDeviceAuthContexts();
+            }
+        }
     }
 
     public bool IsDeviceDrawerOpen {
@@ -393,6 +420,7 @@ public sealed class MainViewModel : ObservableObject {
             if (SetProperty(ref _hasAuthenticatedWithNura, value)) {
                 OnPropertyChanged(nameof(AccountNameDisplay));
                 OnPropertyChanged(nameof(AccountEmailDisplay));
+                UpdateAllDeviceAuthContexts();
             }
         }
     }
@@ -501,7 +529,7 @@ public sealed class MainViewModel : ObservableObject {
 
     public bool ShowDisconnectedDevicePlaceholder => IsCurrentDeviceDisconnected && !ShowDisconnectedDeviceProfilePreview;
 
-    public bool CanInteractWithCurrentDeviceControls => CurrentDevice.IsConnected;
+    public bool CanInteractWithCurrentDeviceControls => CurrentDevice.IsConnected && !CurrentDevice.IsBusy;
 
     public string DisconnectedDevicePreviewButtonText => ShowDisconnectedDeviceProfilePreview
         ? "Show disconnected artwork"
@@ -520,7 +548,7 @@ public sealed class MainViewModel : ObservableObject {
 
     public string SerialButtonText => IsSerialVisible ? "Hide" : "Show";
 
-    public string CurrentBatteryText => $"{CurrentDevice.BatteryLevel}%";
+    public string CurrentBatteryText => CurrentDevice.BatteryText;
 
     public string CurrentSoftwareVersion => CurrentDevice.SoftwareVersion;
 
@@ -534,11 +562,11 @@ public sealed class MainViewModel : ObservableObject {
 
     public int CurrentProfileCount => CurrentProfiles.Count;
 
-    public IReadOnlyList<DeviceModel> PrioritizedDevices => BuildPrioritizedDevices();
+    public IReadOnlyList<NuraDeviceViewModel> PrioritizedDevices => BuildPrioritizedDevices();
 
-    public IReadOnlyList<DeviceModel> VisibleDevices => PrioritizedDevices.Take(3).ToList();
+    public IReadOnlyList<NuraDeviceViewModel> VisibleDevices => PrioritizedDevices.Take(3).ToList();
 
-    public IReadOnlyList<DeviceModel> OverflowDevices => PrioritizedDevices.Skip(3).ToList();
+    public IReadOnlyList<NuraDeviceViewModel> OverflowDevices => PrioritizedDevices.Skip(3).ToList();
 
     public bool HasOverflowDevices => OverflowDevices.Count > 0;
 
@@ -607,6 +635,46 @@ public sealed class MainViewModel : ObservableObject {
             OnPropertyChanged(nameof(ImmersionIndex));
             OnPropertyChanged(nameof(CurrentImmersionValue));
             OnPropertyChanged(nameof(CurrentVisualImmersionValue));
+        }
+
+        if (e.PropertyName == nameof(DeviceModel.Profiles)) {
+            OnPropertyChanged(nameof(CurrentProfiles));
+            OnPropertyChanged(nameof(CurrentProfileCount));
+            SyncCurrentProfileSelectionFromCurrentDevice(animate: false);
+        }
+
+        if (e.PropertyName == nameof(DeviceModel.AncLevel)) {
+            OnPropertyChanged(nameof(CurrentAncLevelValue));
+            OnPropertyChanged(nameof(CurrentAncLevelText));
+        }
+
+        if (e.PropertyName == nameof(DeviceModel.SerialNumber)) {
+            OnPropertyChanged(nameof(DisplaySerial));
+        }
+
+        if (e.PropertyName == nameof(DeviceModel.SoftwareVersion)) {
+            OnPropertyChanged(nameof(CurrentSoftwareVersion));
+        }
+
+        if (e.PropertyName == nameof(DeviceModel.BatteryLevel)) {
+            OnPropertyChanged(nameof(CurrentBatteryText));
+        }
+
+        if (e.PropertyName is nameof(DeviceModel.AncEnabled) or
+            nameof(DeviceModel.SocialMode) or
+            nameof(DeviceModel.SpatialEnabled) or
+            nameof(DeviceModel.TouchButtons) or
+            nameof(DeviceModel.Dial) or
+            nameof(DeviceModel.SupportsAnc) or
+            nameof(DeviceModel.SupportsAncLevel) or
+            nameof(DeviceModel.SupportsSpatial) or
+            nameof(DeviceModel.SupportsTouchButtons) or
+            nameof(DeviceModel.SupportsDial) or
+            nameof(DeviceModel.SupportsEuVolumeLimiter) or
+            nameof(NuraDeviceViewModel.RequiresProvisioning) or
+            nameof(NuraDeviceViewModel.OperationStatusText) or
+            nameof(NuraDeviceViewModel.IsBusy)) {
+            RefreshCurrentDeviceBindings();
         }
     }
 
@@ -727,7 +795,7 @@ public sealed class MainViewModel : ObservableObject {
         Process.Start("explorer.exe", fullPath);
     }
 
-    private void SubmitAuthenticationEmail() {
+    private async void SubmitAuthenticationEmail() {
         var email = AuthenticationEmail.Trim();
         if (!Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$")) {
             AuthenticationStatusText = "Enter a valid email address to continue.";
@@ -736,15 +804,38 @@ public sealed class MainViewModel : ObservableObject {
 
         AuthenticationEmail = email;
         AuthenticationCode = string.Empty;
-        IsAuthenticationCodeStep = true;
-        AuthenticationStatusText = $"Enter the 6-digit code sent to {email}.";
+        if (_client is null) {
+            IsAuthenticationCodeStep = true;
+            AuthenticationStatusText = $"Enter the 6-digit code sent to {email}.";
+            return;
+        }
+
+        try {
+            AuthenticationStatusText = $"Requesting a login code for {email}.";
+            await _client.Auth.RequestEmailCodeAsync(email);
+            IsAuthenticationCodeStep = true;
+            AuthenticationStatusText = $"Enter the 6-digit code sent to {email}.";
+        } catch (Exception ex) {
+            AuthenticationStatusText = $"Could not request a login code. {ex.Message}";
+        }
     }
 
-    private void VerifyAuthenticationCode() {
+    private async void VerifyAuthenticationCode() {
         AuthenticationCode = NormaliseAuthenticationCode(AuthenticationCode);
         if (AuthenticationCode.Length != 6) {
             AuthenticationStatusText = "Enter the full 6-digit verification code.";
             return;
+        }
+
+        if (_client is not null) {
+            try {
+                AuthenticationStatusText = "Verifying your login code.";
+                await _client.Auth.VerifyEmailCodeAsync(AuthenticationCode, AuthenticationEmail);
+                await RefreshDevicesAsync();
+            } catch (Exception ex) {
+                AuthenticationStatusText = $"Verification failed. {ex.Message}";
+                return;
+            }
         }
 
         HasAuthenticatedWithNura = true;
@@ -768,7 +859,12 @@ public sealed class MainViewModel : ObservableObject {
         AuthenticationStatusText = "Continuing with locally stored device keys.";
     }
 
-    private void LogoutAuthentication() {
+    private async void LogoutAuthentication() {
+        if (_client is not null) {
+            _client.Auth.ClearStoredSession();
+            await RefreshDevicesAsync();
+        }
+
         AuthenticationEmail = string.Empty;
         AuthenticationCode = string.Empty;
         ConnectToNura = false;
@@ -831,6 +927,39 @@ public sealed class MainViewModel : ObservableObject {
         OnPropertyChanged(nameof(RememberExpandTypeSubtitle));
     }
 
+    private void InitializeEmptyCurrentSelection() {
+        _currentDevice = CreateEmptyDeviceModel();
+        _currentProfile = GetFallbackProfile("Profile 1", 0);
+        _displayedProfile = _currentProfile;
+        _displayedModeProgress = 1.0;
+        _visualFromProfile = _currentProfile;
+        _visualToProfile = _currentProfile;
+        _visualProfileBlendProgress = 1.0;
+        _visualModeProgress = 1.0;
+    }
+
+    private void ResetCurrentSelectionToEmpty() {
+        CurrentDevice = CreateEmptyDeviceModel();
+        OnPropertyChanged(nameof(CurrentDeviceActionText));
+    }
+
+    private NuraDeviceViewModel CreateEmptyDeviceModel() {
+        return NuraDeviceViewModel.CreateDemo(
+            EmptyDeviceId,
+            "No device selected",
+            batteryLevel: null,
+            serialNumber: string.Empty,
+            softwareVersion: string.Empty,
+            profiles: [],
+            fallbackProfiles: Profiles.Values.ToList(),
+            isConnected: false,
+            socialMode: false,
+            ancEnabled: false,
+            euVolumeLimiter: false,
+            immersionIndex: 2,
+            isPersonalised: true);
+    }
+
     private int GetClampedExportRenderSize() {
         return int.TryParse(ExportRenderSizeText, out var parsed)
             ? Math.Clamp(parsed, MinExportRenderSize, MaxExportRenderSize)
@@ -858,7 +987,7 @@ public sealed class MainViewModel : ObservableObject {
         CompositionTarget.Rendering -= OnCompositionRendering;
     }
 
-    private List<DeviceModel> BuildPrioritizedDevices() {
+    private List<NuraDeviceViewModel> BuildPrioritizedDevices() {
         var prioritizedIds = _devicePriorityIds
             .Where(id => Devices.Any(device => device.Id == id))
             .ToList();
@@ -874,7 +1003,7 @@ public sealed class MainViewModel : ObservableObject {
             .ToList();
     }
 
-    private void PromoteDevice(DeviceModel device) {
+    private void PromoteDevice(NuraDeviceViewModel device) {
         _devicePriorityIds.Remove(device.Id);
         _devicePriorityIds.Insert(0, device.Id);
         OnPropertyChanged(nameof(PrioritizedDevices));
@@ -884,35 +1013,8 @@ public sealed class MainViewModel : ObservableObject {
         OnPropertyChanged(nameof(MoreDevicesButtonText));
     }
 
-    private IReadOnlyDictionary<string, ProfileModel> BuildProfiles() {
-        return new Dictionary<string, ProfileModel> {
-            ["Callum"] = new ProfileModel(
-                "Callum",
-                0.45,
-                [13.688053, 1.567564, 9.559364, -15.043674, -1.586667, 0.576336, -6.451581, -4.674792, -1.964447, -1.165475, -2.944404, -3.545126],
-                [4.688053, 7.567564, 3.559364, 4.043674, 2.586667, 3.576336, -4.451581, -6.674792, 2.964447, -6.165475, -5.944404, 1.545126]),
-            ["Studio"] = new ProfileModel(
-                "Studio",
-                0.10,
-                [1.2, 0.8, 0.4, -0.3, -0.7, -0.4, 0.2, 0.5, 0.1, -0.2, -0.5, -0.3],
-                [1.0, 0.7, 0.5, -0.2, -0.6, -0.5, 0.1, 0.6, 0.2, -0.1, -0.4, -0.2]),
-            ["Travel"] = new ProfileModel(
-                "Travel",
-                0.78,
-                [2.0, 1.8, 1.4, 0.7, 0.1, -0.8, -2.2, -4.5, -6.8, -7.5, -5.6, -3.2],
-                [1.7, 1.5, 1.2, 0.5, -0.2, -1.2, -2.8, -5.0, -7.2, -7.8, -5.9, -3.5]),
-        };
-    }
-
-    private IReadOnlyList<DeviceModel> BuildDevices() {
-        return new[]
-        {
-            new DeviceModel("nuratrue-pro-523", "NuraTrue Pro 523", 80, "NTP-523-84A2197", "3.2.1", new[] { Profiles["Callum"], Profiles["Studio"], Profiles["Travel"] }, isConnected: true, immersionIndex: 3, isPersonalised: true),
-            new DeviceModel("nuraloop-564", "NuraLoop 564", 62, "NLP-114-72C1901", "2.8.4", new[] { Profiles["Callum"], Profiles["Travel"] }, isConnected: false, socialMode: true, ancEnabled: false, euVolumeLimiter: true, immersionIndex: 1, isPersonalised: false),
-            new DeviceModel("nuraphone-123", "nuraphone 123", 47, "NPH-008-44B9036", "4.1.0", new[] { Profiles["Callum"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false, immersionIndex: 5, isPersonalised: true),
-            new DeviceModel("nurabuds-521", "NuraBuds 521", 91, "NBD-201-55F4412", "1.6.3", new[] { Profiles["Studio"], Profiles["Travel"] }, isConnected: true, socialMode: false, ancEnabled: true, euVolumeLimiter: false, immersionIndex: 2, isPersonalised: false),
-            new DeviceModel("nuraloop-796", "Nura Loop 796", 34, "NLB-171-22D8034", "0.9.7", new[] { Profiles["Callum"], Profiles["Studio"] }, isConnected: false, socialMode: false, ancEnabled: false, euVolumeLimiter: true, immersionIndex: 4, isPersonalised: true, warningText: "Provisioning required"),
-        };
+    private static IReadOnlyDictionary<string, ProfileModel> BuildProfiles() {
+        return PopupDemoSeedFactory.CreateProfiles();
     }
 
     private static IEnumerable<WindowAnchorOption> BuildWindowAnchorOptions() {

@@ -20,6 +20,11 @@ public sealed record class NuraDeviceConfig {
     public required string DeviceSerial { get; init; }
 
     /// <summary>
+    /// Gets the last known Bluetooth-friendly device name.
+    /// </summary>
+    public string FriendlyName { get; init; } = string.Empty;
+
+    /// <summary>
     /// Gets the last known firmware version for the device.
     /// </summary>
     public int FirmwareVersion { get; init; }

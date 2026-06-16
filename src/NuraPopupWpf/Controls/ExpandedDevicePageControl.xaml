@@ -55,6 +55,15 @@
                 </Grid>
 
                 <Grid Grid.Row="1" Margin="0,0,0,18">
+                    <Border Style="{StaticResource InfoChipBorderStyle}"
+                            VerticalAlignment="Top"
+                            Margin="0,0,0,16"
+                            Visibility="{Binding ShowCurrentDeviceActionPanel, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="Device status" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="{Binding CurrentDeviceActionText}" Foreground="White" FontSize="13" TextWrapping="Wrap" Margin="0,6,0,0" />
+                        </StackPanel>
+                    </Border>
                     <Grid>
                         <Grid.Style>
                             <Style TargetType="Grid">
@@ -277,6 +286,18 @@
                                              HorizontalAlignment="Stretch" />
 
                     <StackPanel Margin="8,20,8,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Opacity" Value="1" />
+                                <Setter Property="IsEnabled" Value="True" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CanChangeImmersionControl}" Value="False">
+                                        <Setter Property="Opacity" Value="0.45" />
+                                        <Setter Property="IsEnabled" Value="False" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
                         <TextBlock Text="Immersion mode" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
                         <local:AnimatedSlider Margin="0,12,0,0"
                                               Style="{StaticResource ImmersionSliderStyle}"
@@ -325,7 +346,8 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    
+                                    <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center" HorizontalAlignment="Left">
                                         <Ellipse.Style>
                                             <Style TargetType="Ellipse">
                                                 <Setter Property="Fill" Value="#55FFFFFF" />
@@ -337,8 +359,10 @@
                                             </Style>
                                         </Ellipse.Style>
                                     </Ellipse>
+                                    
                                     <StackPanel Grid.Column="1"
-                                                VerticalAlignment="Center">
+                                                VerticalAlignment="Center"
+                                                HorizontalAlignment="Left">
                                         <TextBlock Text="{Binding Name}"
                                                    Foreground="White"
                                                    FontWeight="SemiBold"
@@ -381,7 +405,7 @@
                                                    FontSize="12"
                                                    VerticalAlignment="Center"
                                                    Margin="0,0,6,0" />
-                                        <TextBlock Text="{Binding BatteryLevel, StringFormat={}{0}%}"
+                                        <TextBlock Text="{Binding BatteryText}"
                                                    Foreground="{StaticResource SubtleTextBrush}"
                                                    FontSize="12"
                                                    VerticalAlignment="Center" />
@@ -390,6 +414,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    
                     <ToggleButton x:Name="MoreDevicesButton"
                                   Margin="0,2,0,0"
                                   Background="#10FFFFFF"
@@ -526,7 +551,7 @@
                                                            FontSize="12"
                                                            VerticalAlignment="Center"
                                                            Margin="0,0,6,0" />
-                                                <TextBlock Text="{Binding BatteryLevel, StringFormat={}{0}%}"
+                                                <TextBlock Text="{Binding BatteryText}"
                                                            Foreground="{StaticResource SubtleTextBrush}"
                                                            FontSize="12"
                                                            VerticalAlignment="Center" />

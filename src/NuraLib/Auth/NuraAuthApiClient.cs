@@ -326,7 +326,8 @@ internal sealed class NuraAuthApiClient {
 
     private static Dictionary<string, object?> BuildAppContextPayload(
         NuraAuthApiState state,
-        long appStartTimeUnixMilliseconds) {
+        long appStartTimeUnixMilliseconds
+    ) {
         return new Dictionary<string, object?>(StringComparer.Ordinal) {
             ["uuid"] = state.Uuid,
             ["os"] = 1,

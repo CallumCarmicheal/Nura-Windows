@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+
 namespace NuraLib.Protocol;
 
 internal static class NuraResponseParsers {
@@ -57,6 +59,33 @@ internal static class NuraResponseParsers {
         return ReadRequiredByte(payload, "current profile");
     }
 
+    public static Devices.NuraProfileVisualisationData DecodeVisualisationData(byte[] payload) {
+        if (payload.Length == 1 && payload[0] == 0x00) {
+            return Devices.NuraProfileVisualisationData.Empty;
+        }
+
+        const int expectedLength = 1 + 4 + (12 * 4) + (12 * 4);
+        RequireMinimumLength(payload, expectedLength, "Visualisation data");
+
+        var left = new double[12];
+        var right = new double[12];
+
+        for (var index = 0; index < left.Length; index++) {
+            left[index] = ReadSingleBigEndian(payload, 5 + (index * 4));
+        }
+
+        for (var index = 0; index < right.Length; index++) {
+            right[index] = ReadSingleBigEndian(payload, 53 + (index * 4));
+        }
+
+        return new Devices.NuraProfileVisualisationData {
+            Valid = payload[0] != 0x00,
+            Colour = ReadSingleBigEndian(payload, 1),
+            LeftData = left,
+            RightData = right
+        };
+    }
+
     public static string DecodeProfileName(byte[] payload) {
         if (payload.Length == 0) {
             return string.Empty;
@@ -95,6 +124,12 @@ internal static class NuraResponseParsers {
         RequireMinimumLength(payload, 2, "Kickit state");
 
         return new NuraKickitState(payload[0], payload[1] == 0x01);
+    }
+
+    public static NuraClassicKickitParams DecodeClassicKickitParams(byte[] payload) {
+        RequireExactLength(payload, 3, "Classic Kickit params");
+
+        return new NuraClassicKickitParams(payload[0], payload[1], payload[2]);
     }
 
     public static Devices.NuraButtonConfiguration DecodeButtonConfiguration(
@@ -151,9 +186,57 @@ internal static class NuraResponseParsers {
     private static short ReadInt16BigEndian(byte[] payload, int offset) {
         return unchecked((short)ReadUInt16BigEndian(payload, offset));
     }
+
+    private static float ReadSingleBigEndian(byte[] payload, int offset) {
+        var value = BinaryPrimitives.ReadInt32BigEndian(payload.AsSpan(offset, 4));
+        return BitConverter.Int32BitsToSingle(value);
+    }
 }
 
 internal readonly record struct NuraKickitState(int RawLevel, bool Enabled);
+
+internal readonly record struct NuraClassicKickitParams(byte DrcRaw, byte LpfRaw, byte GainRaw) {
+    public static NuraClassicKickitParams FromImmersionLevel(Devices.NuraImmersionLevel level) =>
+        level switch {
+            Devices.NuraImmersionLevel.Positive4 => new NuraClassicKickitParams(0x04, 0x00, 0x02),
+            Devices.NuraImmersionLevel.Positive3 => new NuraClassicKickitParams(0x03, 0x00, 0x02),
+            Devices.NuraImmersionLevel.Positive2 => new NuraClassicKickitParams(0x02, 0x02, 0x02),
+            Devices.NuraImmersionLevel.Positive1 => new NuraClassicKickitParams(0x01, 0x02, 0x02),
+            Devices.NuraImmersionLevel.Neutral => new NuraClassicKickitParams(0x00, 0x04, 0x02),
+            Devices.NuraImmersionLevel.Negative1 => new NuraClassicKickitParams(0x00, 0x04, 0x01),
+            Devices.NuraImmersionLevel.Negative2 => new NuraClassicKickitParams(0x00, 0x04, 0x00),
+            _ => throw new ArgumentOutOfRangeException(nameof(level), level, "Unsupported immersion level.")
+        };
+
+    public bool TryToImmersionLevel(out Devices.NuraImmersionLevel level) {
+        switch (DrcRaw, LpfRaw, GainRaw) {
+            case (0x04, 0x00, 0x02):
+                level = Devices.NuraImmersionLevel.Positive4;
+                return true;
+            case (0x03, 0x00, 0x02):
+                level = Devices.NuraImmersionLevel.Positive3;
+                return true;
+            case (0x02, 0x02, 0x02):
+                level = Devices.NuraImmersionLevel.Positive2;
+                return true;
+            case (0x01, 0x02, 0x02):
+                level = Devices.NuraImmersionLevel.Positive1;
+                return true;
+            case (0x00, 0x04, 0x02):
+                level = Devices.NuraImmersionLevel.Neutral;
+                return true;
+            case (0x00, 0x04, 0x01):
+                level = Devices.NuraImmersionLevel.Negative1;
+                return true;
+            case (0x00, 0x04, 0x00):
+                level = Devices.NuraImmersionLevel.Negative2;
+                return true;
+            default:
+                level = default;
+                return false;
+        }
+    }
+}
 
 internal readonly record struct DeviceInfo(int SerialNumber, int FirmwareVersion);
 

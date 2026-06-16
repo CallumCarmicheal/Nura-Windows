@@ -81,9 +81,12 @@ public partial class MainWindow : Window {
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(nint hMonitor, ref MonitorInfo lpmi);
 
+    public MainWindow(MainViewModel viewModel) : this() {
+        DataContext = viewModel;
+    }
+
     public MainWindow() {
         InitializeComponent();
-        DataContext = new MainViewModel();
 
         Loaded += OnLoaded;
         DataContextChanged += OnWindowDataContextChanged;
