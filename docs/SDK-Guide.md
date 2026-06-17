@@ -914,7 +914,9 @@ client.Monitoring.DeviceDisconnected += (_, args) =>
 await client.Monitoring.StartAsync();
 ```
 
-`StopAsync()` stops the polling loop.
+`StopAsync()` stops only the connection polling loop. It does not stop any per-device indication loops that were started with `ConnectedNuraDevice.StartMonitoringAsync()`.
+
+When the monitoring loop observes an actual disconnect, `NuraLib` marks that device disconnected and tears down its local session. App shutdown is different: the devices may still be connected, so the host should stop each device-level monitor/session explicitly.
 
 ### 2. Device-level indication monitoring
 
@@ -977,6 +979,47 @@ client.OnLog += (_, args) =>
 ```
 
 Use this when you are integrating provisioning, local handshake, or Bluetooth state retrieval. It will save time.
+
+Do not log raw secrets. Treat these as sensitive:
+
+- `NuraConfig.Auth.AccessToken`
+- `NuraConfig.Auth.ClientKey`
+- `NuraDeviceConfig.DeviceKey`
+- `ConnectedNuraDevice.DeviceConfig.GetDeviceKeyHex()`
+
+It is fine to log whether a key is present, which provisioning reason applies, and which high-level operation is running. Do not print the raw key/token values in sample apps, support logs, screenshots, or telemetry.
+
+## Console sample app
+
+`NuraApp` is a small console/TUI sample that demonstrates the live SDK integration path without WPF:
+
+```powershell
+dotnet run --project .\NuraApp\NuraApp.csproj
+```
+
+The sample intentionally keeps all UI code in the app layer. It uses `NuraLib` only for auth, device discovery, provisioning, refresh, and monitoring.
+
+The important sequence is:
+
+1. load `nura-config.json` with `NuraConfigStore.LoadOrCreate`
+2. construct `NuraClient`
+3. persist `client.State.Configuration` whenever `RequestStateSave` fires
+4. resume stored auth if possible, otherwise prompt for email-code login
+5. subscribe to `client.Monitoring.DeviceConnected` and `DeviceDisconnected`
+6. start connection monitoring with `client.Monitoring.StartAsync()`
+7. for each connected device, provision if `ProvisioningRequired` is true
+8. call `RefreshAsync()` once a persistent device key is available
+9. call `StartMonitoringAsync()` to keep cached state updated from headset indications
+10. on shutdown, call `client.Monitoring.StopAsync()`, then call `StopMonitoringAsync()` for every connected device with `IsMonitoring` or `HasLocalSession`
+
+The sample uses `Environment.CurrentDirectory\nura-config.json` for convenience. Production apps should usually store config under an app-owned location such as `%LOCALAPPDATA%`, an encrypted settings store, or the host application's normal profile directory.
+
+The sample also shows two event patterns:
+
+- use fine-grained events such as `State.AncChanged` when the host wants targeted updates
+- use `ConnectedNuraDevice.Changed` when the host wants one broad invalidation signal and will re-read cached values itself
+
+If you copy the event-handler shape into a production app, wrap async event-handler bodies in a try/catch and log failures. .NET events do not observe returned tasks, so an uncaught exception from an `async void` event handler can become process-level failure.
 
 ## Host responsibilities
 
@@ -1463,7 +1506,7 @@ private async Task RunDeviceActionAsync(Func<Task> action)
 Shutdown sequence:
 
 1. stop connection monitoring if it was started
-2. stop monitoring on the selected device if it was started
+2. stop monitoring/local sessions on every connected device that was started
 3. save config one final time
 4. let the process exit
 
@@ -1472,23 +1515,28 @@ Pseudo-code:
 ```csharp
 public async Task ShutdownAsync()
 {
-    if (SelectedDevice is not null)
-    {
-        try
-        {
-            await SelectedDevice.DisposeAsync();
-        }
-        catch
-        {
-        }
-    }
-
     try
     {
         await Client.Monitoring.StopAsync();
     }
     catch
     {
+    }
+
+    foreach (var device in Client.Devices.All.OfType<ConnectedNuraDevice>().ToArray())
+    {
+        if (!device.IsMonitoring && !device.HasLocalSession)
+        {
+            continue;
+        }
+
+        try
+        {
+            await device.StopMonitoringAsync();
+        }
+        catch
+        {
+        }
     }
 
     NuraConfigStore.Save(_configPath, Client.State.Configuration);

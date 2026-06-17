@@ -517,7 +517,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             Profiles = BuildProfilesFromLiveDevice(LiveDevice);
             HasLocalSession = LiveDevice.HasLocalSession;
             IsMonitoring = LiveDevice.IsMonitoring;
-            RequiresProvisioning = LiveDevice.ProvisioningRequired ?? !LiveDevice.HasPersistentDeviceKey;
+            RequiresProvisioning = LiveDevice.ProvisioningRequired || !LiveDevice.HasPersistentDeviceKey;
             ApplyOperationStatus(LiveDevice.OperationStatus);
             RefreshWarningState();
         } finally {
