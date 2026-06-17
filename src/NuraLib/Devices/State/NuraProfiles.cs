@@ -51,6 +51,7 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
         _current = profileId;
         if (previous != profileId) {
             ProfileIdChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<int?>(previous, profileId));
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -58,6 +59,7 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
         if (string.IsNullOrWhiteSpace(name)) {
             if (_names.Remove(profileId)) {
                 NamesChanged?.Invoke(nuraDevice, EventArgs.Empty);
+                nuraDevice.RaiseChanged();
             }
             return;
         }
@@ -68,6 +70,7 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
 
         _names[profileId] = name;
         NamesChanged?.Invoke(nuraDevice, EventArgs.Empty);
+        nuraDevice.RaiseChanged();
     }
 
     internal void UpdateCurrentVisualisation(NuraProfileVisualisationData? visualisation) {
@@ -82,12 +85,14 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
         }
 
         VisualisationsChanged?.Invoke(nuraDevice, EventArgs.Empty);
+        nuraDevice.RaiseChanged();
     }
 
     internal void UpdateVisualisation(int profileId, NuraProfileVisualisationData? visualisation) {
         if (visualisation is null || !visualisation.Valid) {
             if (_visualisations.Remove(profileId)) {
                 VisualisationsChanged?.Invoke(nuraDevice, EventArgs.Empty);
+                nuraDevice.RaiseChanged();
             }
             return;
         }
@@ -98,6 +103,7 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
 
         _visualisations[profileId] = visualisation;
         VisualisationsChanged?.Invoke(nuraDevice, EventArgs.Empty);
+        nuraDevice.RaiseChanged();
     }
 
     internal void ApplyOnlineProfileMetadata(IReadOnlyList<Auth.NuraAuthProfileVisualisationSlot> slots) {
@@ -126,6 +132,10 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
 
         if (visualsChanged) {
             VisualisationsChanged?.Invoke(nuraDevice, EventArgs.Empty);
+        }
+
+        if (namesChanged || visualsChanged) {
+            nuraDevice.RaiseChanged();
         }
     }
 

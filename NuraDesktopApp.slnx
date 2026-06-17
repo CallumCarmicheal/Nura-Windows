@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="NuraApp/NuraApp.csproj" Id="07e8aba5-536a-4a73-899f-994f84ecde28" />
     <Project Path="src/NuraDesktopApp/NuraDesktopConsole.csproj" />
     <Project Path="src/NuraLib/NuraLib.csproj" />
     <Project Path="src/NuraPopupWpf/NuraPopupWpf.csproj" />

@@ -860,6 +860,7 @@ For live devices, `ConnectedNuraDevice` also exposes runtime status that is usef
 
 Relevant events include:
 
+- `Changed`
 - `IsConnectedChanged`
 - `InfoChanged`
 - `HasPersistentDeviceKeyChanged`
@@ -867,6 +868,8 @@ Relevant events include:
 - `MonitoringChanged`
 - `ProvisioningRequiredChanged`
 - `OperationStatusChanged`
+
+Use `Changed` when your host wants one broad invalidation signal and will refresh its bound view-model values itself. The more specific events are still available for fine-grained bindings and XAML-style updates.
 
 `OperationStatus` is the host-facing progress surface for long-running device work. In particular, provisioning emits raw backend stage codes such as `session/start`, `session/start_1`, and `session/start_4`. Hosts can display those directly instead of scraping logger output.
 

@@ -85,20 +85,27 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
     internal void UpdateAnc(NuraAncState? state) {
         var previous = _anc;
         _anc = state;
-        if (!Equals(previous, state)) {
+        var ancChanged = !Equals(previous, state);
+        if (ancChanged) {
             AncChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraAncState>(previous, state));
         }
 
         var previousAncEnabled = previous?.AncEnabled;
         var currentAncEnabled = state?.AncEnabled;
-        if (previousAncEnabled != currentAncEnabled) {
+        var ancEnabledChanged = previousAncEnabled != currentAncEnabled;
+        if (ancEnabledChanged) {
             AncEnabledChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<bool?>(previousAncEnabled, currentAncEnabled));
         }
 
         var previousPassthroughEnabled = previous?.PassthroughEnabled;
         var currentPassthroughEnabled = state?.PassthroughEnabled;
-        if (previousPassthroughEnabled != currentPassthroughEnabled) {
+        var passthroughEnabledChanged = previousPassthroughEnabled != currentPassthroughEnabled;
+        if (passthroughEnabledChanged) {
             PassthroughEnabledChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<bool?>(previousPassthroughEnabled, currentPassthroughEnabled));
+        }
+
+        if (ancChanged || ancEnabledChanged || passthroughEnabledChanged) {
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -107,6 +114,7 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _ancLevel = level;
         if (previous != level) {
             AncLevelChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<int?>(previous, level));
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -115,6 +123,7 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _globalAncEnabled = enabled;
         if (previous != enabled) {
             GlobalAncEnabledChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<bool?>(previous, enabled));
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -123,6 +132,7 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _spatialEnabled = enabled;
         if (previous != enabled) {
             SpatialEnabledChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<bool?>(previous, enabled));
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -131,6 +141,7 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _personalisationMode = mode;
         if (previous != mode) {
             PersonalisationModeChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraPersonalisationMode?>(previous, mode));
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -139,6 +150,7 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _immersionLevel = level;
         if (previous != level) {
             ImmersionLevelChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraImmersionLevel?>(previous, level));
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -151,6 +163,7 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _effectiveImmersionLevel = level;
         if (previous != level) {
             EffectiveImmersionLevelChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraImmersionLevel?>(previous, level));
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -163,6 +176,7 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _proEqEnabled = enabled;
         if (previous != enabled) {
             ProEqEnabledChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<bool?>(previous, enabled));
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -171,6 +185,7 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _proEq = proEq;
         if (!Equals(previous, proEq)) {
             ProEqChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraProEq?>(previous, proEq));
+            nuraDevice.RaiseChanged();
         }
     }
 

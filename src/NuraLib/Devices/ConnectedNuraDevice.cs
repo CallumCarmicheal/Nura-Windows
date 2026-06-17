@@ -985,6 +985,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         _hasLocalSession = hasLocalSession;
         if (previous != hasLocalSession) {
             LocalSessionChanged?.Invoke(this, new NuraValueChangedEventArgs<bool>(previous, hasLocalSession));
+            RaiseChanged();
         }
     }
 
@@ -993,6 +994,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         _isMonitoring = isMonitoring;
         if (previous != isMonitoring) {
             MonitoringChanged?.Invoke(this, new NuraValueChangedEventArgs<bool>(previous, isMonitoring));
+            RaiseChanged();
         }
     }
 
@@ -1001,6 +1003,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         _provisioningRequired = required;
         if (previous != required) {
             ProvisioningRequiredChanged?.Invoke(this, new NuraValueChangedEventArgs<bool?>(previous, required));
+            RaiseChanged();
         }
     }
 
@@ -1023,6 +1026,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         _operationStatus = next;
         if (!Equals(previous, next)) {
             OperationStatusChanged?.Invoke(this, new NuraValueChangedEventArgs<NuraDeviceOperationStatus?>(previous, next));
+            RaiseChanged();
         }
     }
 

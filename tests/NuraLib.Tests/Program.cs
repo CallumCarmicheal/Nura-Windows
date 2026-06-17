@@ -415,6 +415,7 @@ internal sealed class DeviceManagerStabilityTests {
         ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh();
         ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect();
         ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges();
+        Changed_FiresForAggregateDeviceUpdates();
     }
 
     private static void ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh() {
@@ -491,6 +492,31 @@ internal sealed class DeviceManagerStabilityTests {
         var replacementBySerial = manager.All.OfType<ConnectedNuraDevice>().Single();
         AssertTrue(!ReferenceEquals(replacementByAddress, replacementBySerial), nameof(ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges), "Serial change should create a new device instance.");
         AssertTrue(replacementBySerial.IsConnected, nameof(ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges), "Serial replacement device should be connected.");
+    }
+
+    private static void Changed_FiresForAggregateDeviceUpdates() {
+        var manager = CreateManager(DeviceA);
+        var device = (ConnectedNuraDevice?)manager.FindBySerial(DeviceA.DeviceSerial)
+            ?? throw new InvalidOperationException("Device A was not found.");
+        var changeCount = 0;
+        device.Changed += (_, _) => changeCount++;
+
+        device.ApplyConnectionStateAsync(true).GetAwaiter().GetResult();
+        AssertEqual(1, changeCount, nameof(Changed_FiresForAggregateDeviceUpdates));
+
+        device.State.UpdateAnc(new NuraAncState { AncEnabled = true, PassthroughEnabled = false });
+        AssertEqual(2, changeCount, nameof(Changed_FiresForAggregateDeviceUpdates));
+
+        device.State.UpdateAnc(new NuraAncState { AncEnabled = true, PassthroughEnabled = false });
+        AssertEqual(2, changeCount, nameof(Changed_FiresForAggregateDeviceUpdates));
+
+        device.Configuration.UpdateTouchButtons(new NuraButtonConfiguration {
+            LeftSingleTap = NuraButtonFunction.PlayPauseOnly
+        });
+        AssertEqual(3, changeCount, nameof(Changed_FiresForAggregateDeviceUpdates));
+
+        device.Profiles.UpdateProfileId(1);
+        AssertEqual(4, changeCount, nameof(Changed_FiresForAggregateDeviceUpdates));
     }
 
     private static NuraDeviceManager CreateManager(params NuraDeviceConfig[] devices) {

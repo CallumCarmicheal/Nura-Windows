@@ -42,6 +42,11 @@ public class NuraDevice {
 
     public event EventHandler<NuraValueChangedEventArgs<bool>>? HasPersistentDeviceKeyChanged;
 
+    /// <summary>
+    /// Raised when any cached public device value changes.
+    /// </summary>
+    public event EventHandler? Changed;
+
 
     internal NuraDevice(NuraDeviceConfig config) {
         ApplyConfig(config);
@@ -56,7 +61,12 @@ public class NuraDevice {
         _isConnected = isConnected;
         if (previous != isConnected) {
             IsConnectedChanged?.Invoke(this, new NuraValueChangedEventArgs<bool>(previous, isConnected));
+            RaiseChanged();
         }
+    }
+
+    internal void RaiseChanged() {
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void ApplyConfig(NuraDeviceConfig config) {
@@ -84,13 +94,19 @@ public class NuraDevice {
             SupportedButtonGestures = capabilityInfo.ButtonGestures
         };
 
-        if (previousInfo is not null && !Equals(previousInfo, _info)) {
+        var infoChanged = previousInfo is not null && !Equals(previousInfo, _info);
+        if (infoChanged) {
             InfoChanged?.Invoke(this, EventArgs.Empty);
         }
 
         var currentHasPersistentDeviceKey = !string.IsNullOrWhiteSpace(config.DeviceKey);
-        if (previousInfo is not null && previousHasPersistentDeviceKey != currentHasPersistentDeviceKey) {
+        var persistentDeviceKeyChanged = previousInfo is not null && previousHasPersistentDeviceKey != currentHasPersistentDeviceKey;
+        if (persistentDeviceKeyChanged) {
             HasPersistentDeviceKeyChanged?.Invoke(this, new NuraValueChangedEventArgs<bool>(previousHasPersistentDeviceKey, currentHasPersistentDeviceKey));
+        }
+
+        if (infoChanged || persistentDeviceKeyChanged) {
+            RaiseChanged();
         }
     }
 }

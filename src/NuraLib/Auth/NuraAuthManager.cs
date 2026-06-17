@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 using NuraLib.Logging;
 
 namespace NuraLib.Auth;
@@ -64,7 +62,7 @@ public sealed class NuraAuthManager {
         _logger.Information(Source, $"Requesting login email code for {email}.");
 
         var result = await _apiClient.SendLoginEmailAsync(BuildApiState(), email, cancellationToken);
-        ThrowForFailure(result, "Email-code request failed.");
+        ThrowForFailure(result, CreateAuthenticationFailure("Email-code request failed."));
         PersistAuthentication(
             emailAddress: email,
             result,
@@ -94,7 +92,7 @@ public sealed class NuraAuthManager {
         await EnsureAppSessionAsync(cancellationToken);
         _logger.Information(Source, $"Verifying login code for {email}.");
         var result = await _apiClient.VerifyCodeAsync(BuildApiState(), email, code, cancellationToken);
-        ThrowForFailure(result, "Email-code verification failed.");
+        ThrowForFailure(result, CreateAuthenticationFailure("Email-code verification failed."));
         PersistAuthentication(
             emailAddress: email,
             result,
@@ -115,7 +113,7 @@ public sealed class NuraAuthManager {
         await EnsureAppSessionAsync(cancellationToken);
         _logger.Information(Source, "Validating stored authenticated session with backend.");
         var result = await _apiClient.ValidateTokenAsync(BuildApiState(), withAppContext: false, appStartTimeUnixMilliseconds: null, cancellationToken);
-        ThrowForFailure(result, "Stored session validation failed.");
+        ThrowForFailure(result, CreateAuthenticationFailure("Stored session validation failed."));
         PersistAuthentication(
             emailAddress: _state.Configuration.Auth.UserEmail,
             result,
@@ -175,7 +173,7 @@ public sealed class NuraAuthManager {
             cancellationToken
         );
 
-        ThrowForFailure(result, "Session-start request failed.");
+        ThrowForFailure(result, CreateDeviceSessionStartFailure("Session-start request failed."));
         PersistAuthentication(
             emailAddress: _state.Configuration.Auth.UserEmail,
             result,
@@ -202,7 +200,7 @@ public sealed class NuraAuthManager {
         cancellationToken.ThrowIfCancellationRequested();
         var result = await _apiClient.AutomatedEntryAsync(BuildApiState(), endpoint, sessionId, packets,cancellationToken);
 
-        ThrowForFailure(result, $"Provisioning continuation failed for endpoint {endpoint}.");
+        ThrowForFailure(result, CreateProvisioningContinuationFailure($"Provisioning continuation failed for endpoint {endpoint}."));
         PersistAuthentication(
             emailAddress: _state.Configuration.Auth.UserEmail,
             result,
@@ -219,7 +217,7 @@ public sealed class NuraAuthManager {
         _logger.Information(Source, "Starting app session.");
         var appStartTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var result = await _apiClient.AppSessionAsync(BuildApiState(), "app/session", appStartTime, cancellationToken);
-        ThrowForFailure(result, "App-session request failed.");
+        ThrowForFailure(result, CreateAppSessionFailure("App-session request failed."));
         ApplyRuntimeState(result);
     }
 
@@ -302,17 +300,58 @@ public sealed class NuraAuthManager {
         }
     }
 
-    private void ThrowForFailure(AuthCallResult result, string message) {
-        if (result.IsSuccessStatusCode) {
+    private void ThrowForFailure(
+        AuthCallResult result,
+        Func<int, IReadOnlyDictionary<string, object?>?, NuraAuthFailureException> createException) {
+        if (result.IsSuccessStatusCode && !HasBackendFailureFlag(result.DecodedBody)) {
             return;
         }
 
-        var detail = result.DecodedBody is null
-            ? "no_response_body"
-            : JsonSerializer.Serialize(result.DecodedBody);
-        var fullMessage = $"{message} StatusCode={result.StatusCode}. Response={detail}";
-        var exception = new InvalidOperationException(fullMessage);
-        _logger.Error(Source, fullMessage, exception);
+        var exception = createException(result.StatusCode, result.DecodedBody);
+        _logger.Error(Source, exception.Message, exception);
         throw exception;
     }
+
+    private static bool HasBackendFailureFlag(IReadOnlyDictionary<string, object?>? responseBody) {
+        if (responseBody is null) {
+            return false;
+        }
+
+        if (!TryGetCaseInsensitiveValue(responseBody, "s", out var successValue)) {
+            return false;
+        }
+
+        return successValue is bool success && !success;
+    }
+
+    private static bool TryGetCaseInsensitiveValue(
+        IReadOnlyDictionary<string, object?> source,
+        string key,
+        out object? value) {
+        if (source.TryGetValue(key, out value)) {
+            return true;
+        }
+
+        foreach (var entry in source) {
+            if (string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                value = entry.Value;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static Func<int, IReadOnlyDictionary<string, object?>?, NuraAuthFailureException> CreateAppSessionFailure(string message) =>
+        (statusCode, responseBody) => new AppSessionFailureException(message, statusCode, responseBody);
+
+    private static Func<int, IReadOnlyDictionary<string, object?>?, NuraAuthFailureException> CreateAuthenticationFailure(string message) =>
+        (statusCode, responseBody) => new AuthenticationFailureException(message, statusCode, responseBody);
+
+    private static Func<int, IReadOnlyDictionary<string, object?>?, NuraAuthFailureException> CreateDeviceSessionStartFailure(string message) =>
+        (statusCode, responseBody) => new DeviceSessionStartFailureException(message, statusCode, responseBody);
+
+    private static Func<int, IReadOnlyDictionary<string, object?>?, NuraAuthFailureException> CreateProvisioningContinuationFailure(string message) =>
+        (statusCode, responseBody) => new ProvisioningContinuationFailureException(message, statusCode, responseBody);
 }

@@ -40,6 +40,7 @@ public sealed class NuraDeviceConfiguration(ConnectedNuraDevice nuraDevice) {
         _touchButtons = configuration;
         if (!Equals(previous, configuration)) {
             TouchButtonsChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraButtonConfiguration?>(previous, configuration));
+            nuraDevice.RaiseChanged();
         }
     }
 
@@ -48,23 +49,44 @@ public sealed class NuraDeviceConfiguration(ConnectedNuraDevice nuraDevice) {
         _dial = configuration;
         if (!Equals(previous, configuration)) {
             DialChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraDialConfiguration?>(previous, configuration));
+            nuraDevice.RaiseChanged();
         }
     }
 
     internal void UpdateHeadDetectionEnabled(bool? enabled) {
+        if (_headDetectionEnabled == enabled) {
+            return;
+        }
+
         _headDetectionEnabled = enabled;
+        nuraDevice.RaiseChanged();
     }
 
     internal void UpdateManualHeadDetectionEnabled(bool? enabled) {
+        if (_manualHeadDetectionEnabled == enabled) {
+            return;
+        }
+
         _manualHeadDetectionEnabled = enabled;
+        nuraDevice.RaiseChanged();
     }
 
     internal void UpdateMultipointEnabled(bool? enabled) {
+        if (_multipointEnabled == enabled) {
+            return;
+        }
+
         _multipointEnabled = enabled;
+        nuraDevice.RaiseChanged();
     }
 
     internal void UpdateVoicePromptGain(NuraVoicePromptGain? gain) {
+        if (_voicePromptGain == gain) {
+            return;
+        }
+
         _voicePromptGain = gain;
+        nuraDevice.RaiseChanged();
     }
 
     public void EnsureInteractionCapability(NuraInteractionCapabilities capability, string featureName) {
