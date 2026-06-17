@@ -9,7 +9,7 @@ public class NuraDevice {
     private NuraDeviceInfo _info = null!;
     private bool _isConnected;
 
-    internal NuraDeviceConfig Config { get; private set; } = null!;
+    public NuraDeviceConfig DeviceConfig { get; private set; } = null!;
 
     /// <summary>
     /// Gets static and capability information about the device.
@@ -24,17 +24,17 @@ public class NuraDevice {
     /// <summary>
     /// Gets a value indicating whether a persistent device key is stored for this device.
     /// </summary>
-    public bool HasPersistentDeviceKey => !string.IsNullOrWhiteSpace(Config.DeviceKey);
+    public bool HasPersistentDeviceKey => !string.IsNullOrWhiteSpace(DeviceConfig.DeviceKey);
 
     /// <summary>
     /// Gets a value indicating whether this device is configured as a NuraNow device by the host.
     /// </summary>
-    public bool IsNuraNowDevice => Config.IsNuraNowDevice;
+    public bool IsNuraNowDevice => DeviceConfig.IsNuraNowDevice;
 
     /// <summary>
     /// Gets the last successful backend-assisted provisioning timestamp, when known.
     /// </summary>
-    public DateTimeOffset? LastProvisionedUtc => Config.LastProvisionedUtc;
+    public DateTimeOffset? LastProvisionedUtc => DeviceConfig.LastProvisionedUtc;
 
     public event EventHandler<NuraValueChangedEventArgs<bool>>? IsConnectedChanged;
 
@@ -71,9 +71,9 @@ public class NuraDevice {
 
     private void ApplyConfig(NuraDeviceConfig config) {
         var previousInfo = _info;
-        var previousHasPersistentDeviceKey = !ReferenceEquals(Config, null) && !string.IsNullOrWhiteSpace(Config.DeviceKey);
+        var previousHasPersistentDeviceKey = !ReferenceEquals(DeviceConfig, null) && !string.IsNullOrWhiteSpace(DeviceConfig.DeviceKey);
 
-        Config = config;
+        DeviceConfig = config;
         var deviceType = NuraDeviceCapabilities.ResolveType(config.Type);
         var capabilityInfo = NuraDeviceCapabilities.GetCapabilityInfo(deviceType, config.FirmwareVersion);
         _info = new NuraDeviceInfo {

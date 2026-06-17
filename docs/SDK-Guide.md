@@ -453,6 +453,12 @@ if (await connected.RequiresProvisioningAsync())
 - the device has no stored persistent key
 - or the device is marked as a NuraNow device and its last successful provisioning is older than 30 days
 
+`ConnectedNuraDevice.ProvisioningRequired` is evaluated from local configuration when the device object is created and refreshed when its config changes, so it should be `true` or `false` by the time a device is passed to `DeviceConnected`. Use `ProvisioningRequirementReason` to distinguish why:
+
+- `MissingDeviceKey`: the host does not have the persistent device key, so local encrypted control cannot start until provisioning recovers it
+- `NuraNowRefreshRequired`: the host has a key, but this is a host-marked NuraNow device that should phone home to refresh entitlement
+- `None`: no backend-assisted provisioning is required for local control
+
 Important limitation:
 
 - `NuraLib` does not currently auto-detect NuraNow devices from device metadata or backend responses
@@ -597,6 +603,8 @@ await connected.State.SetPassthroughEnabledAsync(false);
 await connected.State.SetAncLevelAsync(4);
 await connected.State.SetGlobalAncEnabledAsync(true);
 ```
+
+Classic Nuraphone ANC state is primarily observed from headset indications. The library does not issue the direct `GetANCState` app-encrypted command for classic Nuraphone because some firmware returns a same-command GAIA error that can invalidate the local encrypted command stream. Treat null ANC values as "unknown until refreshed by a supported transport or indication" on that device family.
 
 ### Personalisation and immersion
 
@@ -856,6 +864,7 @@ For live devices, `ConnectedNuraDevice` also exposes runtime status that is usef
 - `HasLocalSession`
 - `IsMonitoring`
 - `ProvisioningRequired`
+- `ProvisioningRequirementReason`
 - `OperationStatus`
 
 Relevant events include:
@@ -867,6 +876,7 @@ Relevant events include:
 - `LocalSessionChanged`
 - `MonitoringChanged`
 - `ProvisioningRequiredChanged`
+- `ProvisioningRequirementReasonChanged`
 - `OperationStatusChanged`
 
 Use `Changed` when your host wants one broad invalidation signal and will refresh its bound view-model values itself. The more specific events are still available for fine-grained bindings and XAML-style updates.

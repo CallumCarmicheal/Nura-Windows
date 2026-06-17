@@ -221,7 +221,7 @@ public sealed class NuraProfiles(ConnectedNuraDevice nuraDevice) {
             await nuraDevice.RefreshOnlineProfileMetadataAsync(cancellationToken);
         }
 
-        await nuraDevice.RetrieveCurrentVisualisationAsync(cancellationToken);
+        await nuraDevice.RefreshProfileVisualisationsAsync(profileCount, cancellationToken);
         return Visualisations;
     }
 

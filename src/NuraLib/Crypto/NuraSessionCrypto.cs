@@ -116,26 +116,29 @@ public sealed class NuraSessionCrypto {
 
     private (byte[] Tag, byte[] Crypt) EncryptAuthenticatedInternal(byte[] counterBlock, byte[] payload) {
         var j0 = counterBlock.ToArray();
-        IncrementCounterBlock(counterBlock);
-        var cipherText = ApplyCtr(payload, counterBlock);
+        var payloadCounterBlock = IncrementedCounterBlock(j0);
+        var cipherText = ApplyCtr(payload, payloadCounterBlock);
         var tag = Xor16(EncryptBlock(j0), ComputeGHash(Array.Empty<byte>(), cipherText));
+        AdvanceAuthenticatedPacketCounter(counterBlock, payload.Length);
         return (tag, cipherText);
     }
 
     private byte[] DecryptAuthenticatedInternal(byte[] counterBlock, byte[] cipherText, byte[] tag) {
         var j0 = counterBlock.ToArray();
-        IncrementCounterBlock(counterBlock);
         var expectedTag = Xor16(EncryptBlock(j0), ComputeGHash(Array.Empty<byte>(), cipherText));
         if (!CryptographicOperations.FixedTimeEquals(expectedTag, tag)) {
             throw new InvalidOperationException("authenticated packet MAC did not verify");
         }
 
-        return ApplyCtr(cipherText, counterBlock);
+        var payloadCounterBlock = IncrementedCounterBlock(j0);
+        var payload = ApplyCtr(cipherText, payloadCounterBlock);
+        AdvanceAuthenticatedPacketCounter(counterBlock, payload.Length);
+        return payload;
     }
 
     private byte[] ComputeGmac(byte[] counterBlock, byte[] aad) {
         var j0 = counterBlock.ToArray();
-        IncrementCounterBlock(counterBlock);
+        AdvanceAuthenticatedPacketCounter(counterBlock, 0);
         return Xor16(EncryptBlock(j0), ComputeGHash(aad, Array.Empty<byte>()));
     }
 
@@ -233,6 +236,19 @@ public sealed class NuraSessionCrypto {
             if ((counterBlock[12] & 0x7f) == 0) {
                 throw new InvalidOperationException("counter exhausted");
             }
+        }
+    }
+
+    private static byte[] IncrementedCounterBlock(byte[] counterBlock) {
+        var output = counterBlock.ToArray();
+        IncrementCounterBlock(output);
+        return output;
+    }
+
+    private static void AdvanceAuthenticatedPacketCounter(byte[] counterBlock, int plainLength) {
+        var increments = 1 + (plainLength / 16);
+        for (var index = 0; index < increments; index++) {
+            IncrementCounterBlock(counterBlock);
         }
     }
 

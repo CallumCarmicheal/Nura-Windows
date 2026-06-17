@@ -13,16 +13,21 @@ namespace NuraLib.Devices;
 /// </summary>
 public sealed class ConnectedNuraDevice : NuraDevice {
     private const string Source = nameof(ConnectedNuraDevice);
+    private const int DefaultProfileSlotCount = 3;
     private static readonly TimeSpan NuraNowProvisioningRefreshInterval = TimeSpan.FromDays(30);
     private readonly NuraConfigState _state;
     private readonly NuraAuthManager _authManager;
     private readonly NuraClientLogger _logger;
+    private readonly SemaphoreSlim _connectGate = new(1, 1);
+    private readonly Dictionary<int, NuraAncState> _profileAncStates = [];
+    private readonly Dictionary<int, NuraClassicKickitParams> _classicKickitParams = [];
     private ConnectedNuraDeviceSession? _session;
     private CancellationTokenSource? _monitoringCts;
     private Task? _monitoringTask;
     private bool _hasLocalSession;
     private bool _isMonitoring;
-    private bool? _provisioningRequired;
+    private bool _provisioningRequired;
+    private NuraProvisioningRequirementReason _provisioningRequirementReason;
     private NuraDeviceOperationStatus? _operationStatus;
 
     internal ConnectedNuraDevice(NuraConfigState state, NuraAuthManager authManager, NuraDeviceConfig config, NuraClientLogger logger) : base(config) {
@@ -32,6 +37,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         State = new NuraDeviceState(this);
         Configuration = new NuraDeviceConfiguration(this);
         Profiles = new NuraProfiles(this);
+        RefreshProvisioningRequirement(raiseEvents: false);
     }
 
     /// <summary>
@@ -53,7 +59,9 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
     public bool IsMonitoring => _isMonitoring;
 
-    public bool? ProvisioningRequired => _provisioningRequired;
+    public bool ProvisioningRequired => _provisioningRequired;
+
+    public NuraProvisioningRequirementReason ProvisioningRequirementReason => _provisioningRequirementReason;
 
     public NuraDeviceOperationStatus? OperationStatus => _operationStatus;
 
@@ -68,6 +76,8 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
     public event EventHandler<NuraValueChangedEventArgs<bool?>>? ProvisioningRequiredChanged;
 
+    public event EventHandler<NuraValueChangedEventArgs<NuraProvisioningRequirementReason>>? ProvisioningRequirementReasonChanged;
+
     public event EventHandler<NuraValueChangedEventArgs<NuraDeviceOperationStatus?>>? OperationStatusChanged;
 
     /// <summary>
@@ -81,24 +91,8 @@ public sealed class ConnectedNuraDevice : NuraDevice {
     /// </returns>
     public Task<bool> RequiresProvisioningAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!HasPersistentDeviceKey) {
-            UpdateProvisioningRequired(true);
-            return Task.FromResult(true);
-        }
-
-        if (!IsNuraNowDevice) {
-            UpdateProvisioningRequired(false);
-            return Task.FromResult(false);
-        }
-
-        if (LastProvisionedUtc is null) {
-            UpdateProvisioningRequired(true);
-            return Task.FromResult(true);
-        }
-
-        var expired = LastProvisionedUtc.Value.Add(NuraNowProvisioningRefreshInterval) <= DateTimeOffset.UtcNow;
-        UpdateProvisioningRequired(expired);
-        return Task.FromResult(expired);
+        RefreshProvisioningRequirement(raiseEvents: true);
+        return Task.FromResult(_provisioningRequired == true);
     }
 
     /// <summary>
@@ -193,11 +187,12 @@ public sealed class ConnectedNuraDevice : NuraDevice {
                 throw new InvalidOperationException("Provisioning completed without returning an app_enc key.");
             }
 
-            var updatedDeviceConfig = Config with {
+            var updatedDeviceConfig = DeviceConfig with {
                 DeviceKey = _authManager.CurrentAppEncKey,
                 LastProvisionedUtc = DateTimeOffset.UtcNow
             };
             UpdateConfig(updatedDeviceConfig);
+            RefreshProvisioningRequirement(raiseEvents: true);
             var updatedDevices = _state.Configuration.Devices
                 .Select(device => string.Equals(device.DeviceSerial, Info.Serial, StringComparison.OrdinalIgnoreCase)
                     ? updatedDeviceConfig
@@ -209,7 +204,6 @@ public sealed class ConnectedNuraDevice : NuraDevice {
                 $"Provisioned device key for {Info.Serial}.");
 
             _logger.Information(Source, $"Provisioned persistent device key for {Info.Serial}.");
-            UpdateProvisioningRequired(false);
             UpdateOperationStatus(
                 NuraDeviceOperationKind.Provision,
                 "complete",
@@ -247,65 +241,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public async Task ConnectLocalAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
-        if (_session is not null) {
-            return;
-        }
-
-        UpdateOperationStatus(
-            NuraDeviceOperationKind.ConnectLocal,
-            "connect_local",
-            "Opening local control session.",
-            isRunning: true,
-            isCompleted: false,
-            isError: false);
-
-        if (!HasPersistentDeviceKey) {
-            UpdateOperationStatus(
-                NuraDeviceOperationKind.ConnectLocal,
-                "failed",
-                $"device {Info.Serial} does not have a persistent device key",
-                isRunning: false,
-                isCompleted: true,
-                isError: true);
-            throw new InvalidOperationException($"device {Info.Serial} does not have a persistent device key");
-        }
-
-        try {
-            var runtime = NuraSessionRuntime.Create(Config);
-            var transport = new RfcommHeadsetTransport(_logger);
-            await transport.ConnectAsync(Info.DeviceAddress, cancellationToken);
-            await NuraLocalSessionSupport.PerformAppHandshakeAsync(runtime, transport, _logger, cancellationToken);
-            _session = new ConnectedNuraDeviceSession(runtime, transport, _logger, Info.Serial);
-            UpdateLocalSessionState(true);
-            _logger.Information(Source, $"Local encrypted session established for {Info.Serial}.");
-
-            if (Info.Supports(NuraSystemCapabilities.Profiles)) {
-                var profileId = await NuraLocalSessionSupport.ReadCurrentProfileAsync(_session, _logger, cancellationToken);
-                Profiles.UpdateProfileId(profileId);
-
-                if (SupportsDirectAncStateTransport()) {
-                    await TryRefreshAncStateAsync(profileId, "Initial ANC read", cancellationToken);
-                }
-            }
-
-            UpdateOperationStatus(
-                NuraDeviceOperationKind.ConnectLocal,
-                "complete",
-                "Local control session ready.",
-                isRunning: false,
-                isCompleted: true,
-                isError: false);
-        } catch (Exception ex) {
-            UpdateOperationStatus(
-                NuraDeviceOperationKind.ConnectLocal,
-                "failed",
-                ex.Message,
-                isRunning: false,
-                isCompleted: true,
-                isError: true);
-            await StopSessionAsync(CancellationToken.None);
-            throw;
-        }
+        await EnsureConnectedAsync(cancellationToken);
     }
 
     /// <summary>
@@ -370,7 +306,10 @@ public sealed class ConnectedNuraDevice : NuraDevice {
     public async Task RefreshStateAsync(CancellationToken cancellationToken = default) {
         cancellationToken.ThrowIfCancellationRequested();
         await EnsureConnectedAsync(cancellationToken);
-        if (SupportsDirectAncStateTransport()) {
+
+        if (UsesClassicKickitCommands()) {
+            await RefreshClassicNuraphoneDeviceSpecificDataAsync(cancellationToken);
+        } else if (SupportsDirectAncStateTransport()) {
             var profileId = await RequireCurrentProfileIdAsync(cancellationToken);
             await TryRefreshAncStateAsync(profileId, "ANC state refresh", cancellationToken);
         }
@@ -383,11 +322,11 @@ public sealed class ConnectedNuraDevice : NuraDevice {
             await RetrieveGlobalAncEnabledAsync(cancellationToken);
         }
 
-        if (Info.Supports(NuraAudioCapabilities.PersonalisedMode)) {
+        if (!UsesClassicKickitCommands() && Info.Supports(NuraAudioCapabilities.PersonalisedMode)) {
             await RetrievePersonalisationModeAsync(cancellationToken);
         }
 
-        if (Info.Supports(NuraAudioCapabilities.Immersion) && !UsesClassicKickitCommands()) {
+        if (!UsesClassicKickitCommands() && Info.Supports(NuraAudioCapabilities.Immersion)) {
             await RetrieveImmersionLevelAsync(cancellationToken);
         }
 
@@ -409,10 +348,10 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         }
 
         await RetrieveCurrentProfileIdAsync(cancellationToken);
-        await RefreshProfileNamesAsync(3, cancellationToken);
+        await RefreshProfileNamesAsync(DefaultProfileSlotCount, cancellationToken);
 
         if (Info.Supports(NuraAudioCapabilities.VisualisationData)) {
-            await RetrieveCurrentVisualisationAsync(cancellationToken);
+            await RefreshProfileVisualisationsAsync(DefaultProfileSlotCount, cancellationToken);
         }
     }
 
@@ -487,6 +426,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
         await NuraLocalSessionSupport.SelectProfileAsync(_session!, _logger, profileId, cancellationToken);
         Profiles.UpdateProfileId(profileId);
+        ApplyCachedProfileState(profileId);
 
         if (SupportsDirectAncStateTransport()) {
             try {
@@ -515,9 +455,35 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
     internal async Task<NuraProfileVisualisationData?> RetrieveCurrentVisualisationAsync(CancellationToken cancellationToken) {
         await EnsureConnectedAsync(cancellationToken);
-        var visualisation = await NuraLocalSessionSupport.ReadVisualisationDataAsync(_session!, _logger, cancellationToken);
+        var profileId = await RequireCurrentProfileIdAsync(cancellationToken);
+        var visualisation = await RetrieveVisualisationAsync(profileId, cancellationToken);
         Profiles.UpdateCurrentVisualisation(visualisation);
         return visualisation;
+    }
+
+    internal async Task<NuraProfileVisualisationData?> RetrieveVisualisationAsync(int profileId, CancellationToken cancellationToken) {
+        await EnsureConnectedAsync(cancellationToken);
+        var visualisation = await NuraLocalSessionSupport.ReadVisualisationDataAsync(_session!, _logger, profileId, cancellationToken);
+        Profiles.UpdateVisualisation(profileId, visualisation);
+        return visualisation;
+    }
+
+    internal async Task<IReadOnlyDictionary<int, NuraProfileVisualisationData>> RefreshProfileVisualisationsAsync(int profileCount, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (profileCount < 0) {
+            throw new ArgumentOutOfRangeException(nameof(profileCount));
+        }
+
+        await EnsureConnectedAsync(cancellationToken);
+        for (var profileId = 0; profileId < profileCount; profileId++) {
+            var visualisation = await NuraLocalSessionSupport.ReadVisualisationDataAsync(_session!, _logger, profileId, cancellationToken);
+            Profiles.UpdateVisualisation(profileId, visualisation);
+            if (Profiles.ProfileId == profileId) {
+                Profiles.UpdateCurrentVisualisation(visualisation);
+            }
+        }
+
+        return Profiles.Visualisations;
     }
 
     internal async Task<NuraAncState?> RetrieveAncStateAsync(CancellationToken cancellationToken) {
@@ -537,7 +503,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
         var profileId = await RequireCurrentProfileIdAsync(cancellationToken);
         var ancState = await NuraLocalSessionSupport.ReadAncStateAsync(_session!, _logger, profileId, cancellationToken);
-        State.UpdateAnc(ancState);
+        ApplyAncState(profileId, ancState);
         return ancState;
     }
 
@@ -559,7 +525,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
         var profileId = await RequireCurrentProfileIdAsync(cancellationToken);
         await NuraLocalSessionSupport.SetAncStateAsync(_session!, _logger, profileId, state, cancellationToken);
-        State.UpdateAnc(state);
+        ApplyAncState(profileId, state);
     }
 
     internal async Task SetAncEnabledAsync(bool enabled, CancellationToken cancellationToken) {
@@ -647,18 +613,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
         if (UsesClassicKickitCommands()) {
             var parameters = await NuraLocalSessionSupport.ReadKickitParamsAsync(_session!, _logger, profileId, cancellationToken);
-            if (parameters.TryToImmersionLevel(out var level)) {
-                State.UpdateImmersionLevel(level);
-                State.UpdateEffectiveImmersionLevel(level);
-                return level;
-            }
-
-            _logger.Debug(
-                Source,
-                $"Unknown classic Kickit params for {Info.Serial}: profile={profileId} drc=0x{parameters.DrcRaw:x2} lpf=0x{parameters.LpfRaw:x2} gain=0x{parameters.GainRaw:x2}");
-            State.UpdateImmersionLevel(null);
-            State.UpdateEffectiveImmersionLevel(null);
-            return null;
+            return ApplyClassicKickitParams(profileId, parameters);
         }
 
         var kickitState = await NuraLocalSessionSupport.ReadKickitStateAsync(_session!, _logger, profileId, cancellationToken);
@@ -672,6 +627,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
         if (UsesClassicKickitCommands()) {
             await NuraLocalSessionSupport.SetKickitParamsAsync(_session!, _logger, profileId, level, cancellationToken);
+            _classicKickitParams[profileId] = NuraClassicKickitParams.FromImmersionLevel(level);
             State.UpdateImmersionLevel(level);
             State.UpdateEffectiveImmersionLevel(level);
             return;
@@ -789,7 +745,74 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken) {
         if (_session is null) {
-            await ConnectLocalAsync(cancellationToken);
+            await EnsureConnectedCoreAsync(cancellationToken);
+        }
+    }
+
+    private async Task EnsureConnectedCoreAsync(CancellationToken cancellationToken) {
+        await _connectGate.WaitAsync(cancellationToken);
+        try {
+            if (_session is not null) {
+                return;
+            }
+
+            UpdateOperationStatus(
+                NuraDeviceOperationKind.ConnectLocal,
+                "connect_local",
+                "Opening local control session.",
+                isRunning: true,
+                isCompleted: false,
+                isError: false);
+
+            if (!HasPersistentDeviceKey) {
+                UpdateOperationStatus(
+                    NuraDeviceOperationKind.ConnectLocal,
+                    "failed",
+                    $"device {Info.Serial} does not have a persistent device key",
+                    isRunning: false,
+                    isCompleted: true,
+                    isError: true);
+                throw new InvalidOperationException($"device {Info.Serial} does not have a persistent device key");
+            }
+
+            try {
+                var runtime = NuraSessionRuntime.Create(DeviceConfig);
+                var transport = new RfcommHeadsetTransport(_logger);
+                await transport.ConnectAsync(Info.DeviceAddress, cancellationToken);
+                await NuraLocalSessionSupport.PerformAppHandshakeAsync(runtime, transport, _logger, cancellationToken);
+                _session = new ConnectedNuraDeviceSession(runtime, transport, _logger, Info.Serial);
+                UpdateLocalSessionState(true);
+                _logger.Information(Source, $"Local encrypted session established for {Info.Serial}.");
+
+                if (Info.Supports(NuraSystemCapabilities.Profiles)) {
+                    var profileId = await NuraLocalSessionSupport.ReadCurrentProfileAsync(_session, _logger, cancellationToken);
+                    Profiles.UpdateProfileId(profileId);
+
+                    if (SupportsDirectAncStateTransport()) {
+                        await TryRefreshAncStateAsync(profileId, "Initial ANC read", cancellationToken);
+                    }
+                }
+
+                UpdateOperationStatus(
+                    NuraDeviceOperationKind.ConnectLocal,
+                    "complete",
+                    "Local control session ready.",
+                    isRunning: false,
+                    isCompleted: true,
+                    isError: false);
+            } catch (Exception ex) {
+                UpdateOperationStatus(
+                    NuraDeviceOperationKind.ConnectLocal,
+                    "failed",
+                    ex.Message,
+                    isRunning: false,
+                    isCompleted: true,
+                    isError: true);
+                await StopSessionAsync(CancellationToken.None);
+                throw;
+            }
+        } finally {
+            _connectGate.Release();
         }
     }
 
@@ -801,7 +824,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
     private async Task TryRefreshAncStateAsync(int profileId, string context, CancellationToken cancellationToken) {
         try {
             var ancState = await NuraLocalSessionSupport.ReadAncStateAsync(_session!, _logger, profileId, cancellationToken);
-            State.UpdateAnc(ancState);
+            ApplyAncState(profileId, ancState);
         } catch (GaiaCommandException ex) {
             _logger.Debug(
                 Source,
@@ -815,7 +838,8 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
     private bool SupportsDirectAncStateTransport() =>
         Info.Supports(NuraAudioCapabilities.Anc) &&
-        !Info.Supports(NuraAudioCapabilities.GlobalAncToggle);
+        !Info.Supports(NuraAudioCapabilities.GlobalAncToggle) &&
+        (!UsesClassicKickitCommands() || Info.FirmwareVersion > 510);
 
     private bool RequiresTemporaryAncStateBeforeProfileSwitch() =>
         Info.DeviceType == NuraDeviceType.Nuraphone &&
@@ -850,6 +874,70 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         State.UpdateEffectiveImmersionLevelRaw(state.RawLevel);
     }
 
+    private async Task RefreshClassicNuraphoneDeviceSpecificDataAsync(CancellationToken cancellationToken) {
+        var currentProfileId = await RequireCurrentProfileIdAsync(cancellationToken);
+
+        for (var profileId = 0; profileId < DefaultProfileSlotCount; profileId++) {
+            try {
+                var parameters = await NuraLocalSessionSupport.ReadKickitParamsAsync(_session!, _logger, profileId, cancellationToken);
+                ApplyClassicKickitParams(profileId, parameters);
+            } catch (Exception ex) {
+                _logger.Debug(Source, $"Classic Kickit params refresh skipped for {Info.Serial}: profile={profileId} {ex.Message}");
+            }
+
+            if (SupportsDirectAncStateTransport()) {
+                await TryRefreshAncStateAsync(profileId, $"Classic ANC state refresh profile={profileId}", cancellationToken);
+            }
+        }
+
+        if (Info.FirmwareVersion >= 400 && Info.Supports(NuraAudioCapabilities.PersonalisedMode)) {
+            try {
+                await RetrievePersonalisationModeAsync(cancellationToken);
+            } catch (Exception ex) {
+                _logger.Debug(Source, $"Classic Kickit enabled refresh skipped for {Info.Serial}: {ex.Message}");
+            }
+        }
+
+        ApplyCachedProfileState(currentProfileId);
+    }
+
+    private void ApplyAncState(int profileId, NuraAncState state) {
+        _profileAncStates[profileId] = state;
+        if (Profiles.ProfileId == profileId) {
+            State.UpdateAnc(state);
+        }
+    }
+
+    private NuraImmersionLevel? ApplyClassicKickitParams(int profileId, NuraClassicKickitParams parameters) {
+        _classicKickitParams[profileId] = parameters;
+        if (Profiles.ProfileId != profileId) {
+            return parameters.TryToImmersionLevel(out var cachedLevel) ? cachedLevel : null;
+        }
+
+        if (parameters.TryToImmersionLevel(out var level)) {
+            State.UpdateImmersionLevel(level);
+            State.UpdateEffectiveImmersionLevel(level);
+            return level;
+        }
+
+        _logger.Debug(
+            Source,
+            $"Unknown classic Kickit params for {Info.Serial}: profile={profileId} drc=0x{parameters.DrcRaw:x2} lpf=0x{parameters.LpfRaw:x2} gain=0x{parameters.GainRaw:x2}");
+        State.UpdateImmersionLevel(null);
+        State.UpdateEffectiveImmersionLevel(null);
+        return null;
+    }
+
+    private void ApplyCachedProfileState(int profileId) {
+        if (_profileAncStates.TryGetValue(profileId, out var ancState)) {
+            State.UpdateAnc(ancState);
+        }
+
+        if (_classicKickitParams.TryGetValue(profileId, out var kickitParams)) {
+            ApplyClassicKickitParams(profileId, kickitParams);
+        }
+    }
+
     private void ApplyOnlineProfileMetadata(Dictionary<string, object?>? responseBody) {
         if (responseBody is null) {
             return;
@@ -869,11 +957,16 @@ public sealed class ConnectedNuraDevice : NuraDevice {
             return;
         }
 
+        RefreshProvisioningRequirement(raiseEvents: true);
         UpdateConnectionState(isConnected);
 
         if (!isConnected) {
             await StopSessionAsync(CancellationToken.None);
         }
+    }
+
+    internal void RefreshProvisioningRequirement() {
+        RefreshProvisioningRequirement(raiseEvents: true);
     }
 
     private async Task StopSessionAsync(CancellationToken cancellationToken) {
@@ -931,9 +1024,14 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         switch (indication.Identifier) {
             case HeadsetIndicationIdentifier.CurrentProfileChanged:
                 Profiles.UpdateProfileId(indication.Value);
+                ApplyCachedProfileState(indication.Value);
                 break;
             case HeadsetIndicationIdentifier.AncParametersChanged:
-                State.UpdateAnc(HeadsetIndicationParser.DecodeNuraphoneAncState(indication.Value));
+                if (Profiles.ProfileId is { } profileId) {
+                    ApplyAncState(profileId, HeadsetIndicationParser.DecodeNuraphoneAncState(indication.Value));
+                } else {
+                    State.UpdateAnc(HeadsetIndicationParser.DecodeNuraphoneAncState(indication.Value));
+                }
                 break;
             case HeadsetIndicationIdentifier.KickitEnabledChanged:
                 State.UpdatePersonalisationMode(indication.Value != 0
@@ -944,8 +1042,10 @@ public sealed class ConnectedNuraDevice : NuraDevice {
                 State.UpdateAncLevel(indication.Value);
                 break;
             case HeadsetIndicationIdentifier.KickitLevelChanged:
-                State.UpdateImmersionLevelRaw(indication.Value);
-                State.UpdateEffectiveImmersionLevelRaw(indication.Value);
+                if (!UsesClassicKickitCommands()) {
+                    State.UpdateImmersionLevelRaw(indication.Value);
+                    State.UpdateEffectiveImmersionLevelRaw(indication.Value);
+                }
                 break;
             case HeadsetIndicationIdentifier.GenericModeEnabledChanged:
             case HeadsetIndicationIdentifier.CableChanged:
@@ -998,11 +1098,52 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         }
     }
 
-    private void UpdateProvisioningRequired(bool? required) {
-        var previous = _provisioningRequired;
+    private void RefreshProvisioningRequirement(bool raiseEvents) {
+        UpdateProvisioningRequirement(CalculateProvisioningRequirementReason(), raiseEvents);
+    }
+
+    private NuraProvisioningRequirementReason CalculateProvisioningRequirementReason() {
+        if (!HasPersistentDeviceKey) {
+            return NuraProvisioningRequirementReason.MissingDeviceKey;
+        }
+
+        if (!IsNuraNowDevice) {
+            return NuraProvisioningRequirementReason.None;
+        }
+
+        if (LastProvisionedUtc is null) {
+            return NuraProvisioningRequirementReason.NuraNowRefreshRequired;
+        }
+
+        return LastProvisionedUtc.Value.Add(NuraNowProvisioningRefreshInterval) <= DateTimeOffset.UtcNow
+            ? NuraProvisioningRequirementReason.NuraNowRefreshRequired
+            : NuraProvisioningRequirementReason.None;
+    }
+
+    private void UpdateProvisioningRequirement(NuraProvisioningRequirementReason reason, bool raiseEvents) {
+        var required = reason != NuraProvisioningRequirementReason.None;
+        var previousRequired = _provisioningRequired;
+        var previousReason = _provisioningRequirementReason;
+
         _provisioningRequired = required;
-        if (previous != required) {
-            ProvisioningRequiredChanged?.Invoke(this, new NuraValueChangedEventArgs<bool?>(previous, required));
+        _provisioningRequirementReason = reason;
+
+        if (!raiseEvents) {
+            return;
+        }
+
+        var changed = false;
+        if (previousRequired != required) {
+            ProvisioningRequiredChanged?.Invoke(this, new NuraValueChangedEventArgs<bool?>(previousRequired, required));
+            changed = true;
+        }
+
+        if (previousReason != reason) {
+            ProvisioningRequirementReasonChanged?.Invoke(this, new NuraValueChangedEventArgs<NuraProvisioningRequirementReason>(previousReason, reason));
+            changed = true;
+        }
+
+        if (changed) {
             RaiseChanged();
         }
     }

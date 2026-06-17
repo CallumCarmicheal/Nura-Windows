@@ -87,6 +87,7 @@ public sealed class NuraDeviceManager {
         foreach (var device in allDeviceList) {
             var stableDevice = GetOrCreateDevice(device);
             stableDevice.UpdateConfig(device);
+            stableDevice.RefreshProvisioningRequirement();
             await stableDevice.ApplyConnectionStateAsync(connectedKeys.Contains(GetIdentityKey(device)));
         }
 

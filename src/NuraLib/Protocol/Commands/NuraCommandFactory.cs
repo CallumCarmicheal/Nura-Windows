@@ -15,7 +15,7 @@ internal static class NuraCommandFactory {
 
     public static GetCurrentProfileIdCommand CreateGetCurrentProfileId() => new();
 
-    public static GetVisualisationDataCommand CreateGetVisualisationData() => new();
+    public static GetVisualisationDataCommand CreateGetVisualisationData(int profileId) => new(profileId);
 
     public static GetProfileNameCommand CreateGetProfileName(int profileId) => new(profileId);
 

@@ -42,6 +42,7 @@ internal sealed class CommandRoundTripTests {
         ValidateAppChallengeResponse_Command_RequestAndResponseRoundTrip();
         GetCurrentProfileId_Command_RoundTrip();
         GetProfileName_Command_RoundTrip();
+        GetVisualisationData_Command_RoundTrip();
         SelectProfile_Command_RoundTrip();
         AncCommands_RoundTrip();
         AncLevelAndGlobalAncCommands_RoundTrip();
@@ -90,8 +91,23 @@ internal sealed class CommandRoundTripTests {
             NuraCommandFactory.CreateGetProfileName(2),
             CreateRuntime(),
             expectedPlainRequestHex: "001a02",
-            responsePlainPayloadHex: "00526f636b00",
+            responsePlainPayloadHex: string.Concat("0001526f636b", new string('0', 56)),
             assertResponse: response => AssertEqual("Rock", response, nameof(GetProfileName_Command_RoundTrip)));
+    }
+
+    private static void GetVisualisationData_Command_RoundTrip() {
+        AssertAuthenticatedRoundTrip(
+            NuraCommandFactory.CreateGetVisualisationData(2),
+            CreateRuntime(),
+            expectedPlainRequestHex: "00b802",
+            responsePlainPayloadHex: string.Concat("00013f800000", new string('0', 192)),
+            assertResponse: response => {
+                AssertTrue(response is not null, nameof(GetVisualisationData_Command_RoundTrip), "Expected visualisation data.");
+                AssertTrue(response!.Valid, nameof(GetVisualisationData_Command_RoundTrip), "Expected valid visualisation.");
+                AssertEqual(1.0, response.Colour, nameof(GetVisualisationData_Command_RoundTrip));
+                AssertEqual(12, response.LeftData.Count, nameof(GetVisualisationData_Command_RoundTrip));
+                AssertEqual(12, response.RightData.Count, nameof(GetVisualisationData_Command_RoundTrip));
+            });
     }
 
     private static void SelectProfile_Command_RoundTrip() {
@@ -312,14 +328,27 @@ internal sealed class CommandRoundTripTests {
         string expectedPlainRequestHex,
         string responsePlainPayloadHex,
         Action<TResponse> assertResponse) {
+        var encryptCounterBefore = runtime.Crypto.EncryptCounter;
         var frame = command.CreateFrame(runtime);
         AssertEqual((ushort)GaiaCommandId.EntryAppEncryptedAuthenticated, (ushort)frame.CommandId, command.Name);
         AssertEqual(expectedPlainRequestHex, DecryptAuthenticatedRequestPayload(frame, TestKey, TestNonce), command.Name);
+        AssertEqual(
+            AdvanceAuthenticatedCounter(encryptCounterBefore, expectedPlainRequestHex.Length / 2),
+            runtime.Crypto.EncryptCounter,
+            $"{command.Name} encrypt counter");
 
         var response = CreateAuthenticatedResponse(responsePlainPayloadHex);
+        var decryptCounterBefore = runtime.Crypto.DecryptCounter;
         var parsed = command.ParseResponse(runtime, response);
+        AssertEqual(
+            AdvanceAuthenticatedCounter(decryptCounterBefore, responsePlainPayloadHex.Length / 2),
+            runtime.Crypto.DecryptCounter,
+            $"{command.Name} decrypt counter");
         assertResponse(parsed);
     }
+
+    private static uint AdvanceAuthenticatedCounter(uint counter, int plainLength) =>
+        counter + 1u + (uint)(plainLength / 16);
 
     private static string DecryptAuthenticatedRequestPayload(GaiaFrame frame, byte[] key, byte[] nonce) {
         var payload = GaiaResponse.Parse(frame.Bytes).Payload;
@@ -375,6 +404,7 @@ internal sealed class CommandRoundTripTests {
 }
 
 internal sealed class DeviceManagerStabilityTests {
+    private const string FakeDeviceKeyBase64 = "AAECAwQFBgcICQoLDA0ODw==";
     private static readonly NuraDeviceConfig DeviceA = new() {
         Type = "Nuraphone",
         DeviceAddress = "00:11:22:33:44:55",
@@ -416,6 +446,7 @@ internal sealed class DeviceManagerStabilityTests {
         ReplaceConnectedDevices_PreservesReferencesAcrossDisconnectAndReconnect();
         ReplaceConnectedDevices_CreatesNewInstanceWhenIdentityChanges();
         Changed_FiresForAggregateDeviceUpdates();
+        ProvisioningRequirement_IsInitializedAndRefreshedFromConfig();
     }
 
     private static void ReplaceConnectedDevices_ReusesStableDeviceInstancesAcrossRefresh() {
@@ -517,6 +548,36 @@ internal sealed class DeviceManagerStabilityTests {
 
         device.Profiles.UpdateProfileId(1);
         AssertEqual(4, changeCount, nameof(Changed_FiresForAggregateDeviceUpdates));
+    }
+
+    private static void ProvisioningRequirement_IsInitializedAndRefreshedFromConfig() {
+        var manager = CreateManager(DeviceA);
+        var device = (ConnectedNuraDevice?)manager.FindBySerial(DeviceA.DeviceSerial)
+            ?? throw new InvalidOperationException("Device A was not found.");
+
+        AssertEqual(true, device.ProvisioningRequired, nameof(ProvisioningRequirement_IsInitializedAndRefreshedFromConfig));
+        AssertEqual(NuraProvisioningRequirementReason.MissingDeviceKey, device.ProvisioningRequirementReason, nameof(ProvisioningRequirement_IsInitializedAndRefreshedFromConfig));
+
+        var deviceWithKey = DeviceA with { DeviceKey = FakeDeviceKeyBase64 };
+        manager.ReplaceConnectedDevicesAsync([deviceWithKey], [deviceWithKey]).GetAwaiter().GetResult();
+
+        AssertEqual(false, device.ProvisioningRequired, nameof(ProvisioningRequirement_IsInitializedAndRefreshedFromConfig));
+        AssertEqual(NuraProvisioningRequirementReason.None, device.ProvisioningRequirementReason, nameof(ProvisioningRequirement_IsInitializedAndRefreshedFromConfig));
+
+        var expiredNuraNowDevice = deviceWithKey with {
+            IsNuraNowDevice = true,
+            LastProvisionedUtc = DateTimeOffset.UtcNow.AddDays(-31)
+        };
+        manager.ReplaceConnectedDevicesAsync([expiredNuraNowDevice], [expiredNuraNowDevice]).GetAwaiter().GetResult();
+
+        AssertEqual(true, device.ProvisioningRequired, nameof(ProvisioningRequirement_IsInitializedAndRefreshedFromConfig));
+        AssertEqual(NuraProvisioningRequirementReason.NuraNowRefreshRequired, device.ProvisioningRequirementReason, nameof(ProvisioningRequirement_IsInitializedAndRefreshedFromConfig));
+
+        var freshNuraNowDevice = expiredNuraNowDevice with { LastProvisionedUtc = DateTimeOffset.UtcNow };
+        manager.ReplaceConnectedDevicesAsync([freshNuraNowDevice], [freshNuraNowDevice]).GetAwaiter().GetResult();
+
+        AssertEqual(false, device.ProvisioningRequired, nameof(ProvisioningRequirement_IsInitializedAndRefreshedFromConfig));
+        AssertEqual(NuraProvisioningRequirementReason.None, device.ProvisioningRequirementReason, nameof(ProvisioningRequirement_IsInitializedAndRefreshedFromConfig));
     }
 
     private static NuraDeviceManager CreateManager(params NuraDeviceConfig[] devices) {

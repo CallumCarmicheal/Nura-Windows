@@ -50,17 +50,18 @@ internal static class NuraLocalSessionSupport {
         return profileId;
     }
 
-    public static async Task<NuraProfileVisualisationData> ReadVisualisationDataAsync(
+    public static async Task<NuraProfileVisualisationData?> ReadVisualisationDataAsync(
         ConnectedNuraDeviceSession session,
         NuraClientLogger logger,
+        int profileId,
         CancellationToken cancellationToken) {
-        var command = NuraCommandFactory.CreateGetVisualisationData();
+        var command = NuraCommandFactory.CreateGetVisualisationData(profileId);
         var visualisation = await session.ExecuteAsync(command, cancellationToken);
         logger.Trace(Source, $"visualisation.command={command.Name}");
         return visualisation;
     }
 
-    public static async Task<string> ReadProfileNameAsync(
+    public static async Task<string?> ReadProfileNameAsync(
         ConnectedNuraDeviceSession session,
         NuraClientLogger logger,
         int profileId,

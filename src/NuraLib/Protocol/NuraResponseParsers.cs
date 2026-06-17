@@ -59,13 +59,11 @@ internal static class NuraResponseParsers {
         return ReadRequiredByte(payload, "current profile");
     }
 
-    public static Devices.NuraProfileVisualisationData DecodeVisualisationData(byte[] payload) {
-        if (payload.Length == 1 && payload[0] == 0x00) {
-            return Devices.NuraProfileVisualisationData.Empty;
-        }
-
+    public static Devices.NuraProfileVisualisationData? DecodeVisualisationData(byte[] payload) {
         const int expectedLength = 1 + 4 + (12 * 4) + (12 * 4);
-        RequireMinimumLength(payload, expectedLength, "Visualisation data");
+        if (payload.Length != expectedLength) {
+            return null;
+        }
 
         var left = new double[12];
         var right = new double[12];
@@ -86,14 +84,17 @@ internal static class NuraResponseParsers {
         };
     }
 
-    public static string DecodeProfileName(byte[] payload) {
-        if (payload.Length == 0) {
-            return string.Empty;
+    public static string? DecodeProfileName(byte[] payload) {
+        if (payload.Length != 33 || payload[0] != 0x01) {
+            return null;
         }
 
-        var terminatorIndex = Array.IndexOf(payload, (byte)0x00);
-        var length = terminatorIndex >= 0 ? terminatorIndex : payload.Length;
-        return System.Text.Encoding.UTF8.GetString(payload, 0, length);
+        var namePayload = payload[1..];
+        var terminatorIndex = Array.IndexOf(namePayload, (byte)0x00);
+        var length = terminatorIndex >= 0 ? terminatorIndex : namePayload.Length;
+        return length == 0
+            ? null
+            : System.Text.Encoding.UTF8.GetString(namePayload, 0, length);
     }
 
     public static Devices.NuraAncState DecodeAncState(byte[] payload) {

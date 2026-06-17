@@ -38,15 +38,22 @@ internal sealed class ConnectedNuraDeviceSession : IAsyncDisposable {
         CancellationToken cancellationToken) {
         await _gate.WaitAsync(cancellationToken);
         try {
+            var encryptCounterBefore = Runtime.Crypto.EncryptCounter;
+            var decryptCounterBefore = Runtime.Crypto.DecryptCounter;
             var frame = command.CreateFrame(Runtime);
+            var encryptCounterAfter = Runtime.Crypto.EncryptCounter;
             _logger.Trace(
                 command.Source,
-                $"device={_deviceSerial} name={command.Name} {command.DescribeRequest(frame)} expected_rx=0x{(ushort)command.ExpectedResponseCommandId:x4}");
+                $"device={_deviceSerial} name={command.Name} {command.DescribeRequest(frame)} expected_rx=0x{(ushort)command.ExpectedResponseCommandId:x4} enc_before={encryptCounterBefore} enc_after={encryptCounterAfter} dec_before={decryptCounterBefore}");
             var response = await Transport.ExchangeAsync(frame, command.ExpectedResponseCommandId, cancellationToken);
             _logger.Trace(
                 command.Source,
                 $"device={_deviceSerial} name={command.Name} {command.DescribeResponse(response)}");
-            return command.ParseResponse(Runtime, response);
+            var output = command.ParseResponse(Runtime, response);
+            _logger.Trace(
+                command.Source,
+                $"device={_deviceSerial} name={command.Name} dec_after={Runtime.Crypto.DecryptCounter}");
+            return output;
         } finally {
             _gate.Release();
         }

@@ -1,6 +1,6 @@
 namespace NuraLib.Protocol;
 
-internal sealed class GetProfileNameCommand : NuraAppEncryptedCommand<string> {
+internal sealed class GetProfileNameCommand : NuraAppEncryptedCommand<string?> {
     public GetProfileNameCommand(int profileId) {
         ProfileId = profileId;
     }
@@ -11,5 +11,5 @@ internal sealed class GetProfileNameCommand : NuraAppEncryptedCommand<string> {
 
     protected override byte[] CreatePlainPayload() => [0x00, 0x1a, checked((byte)ProfileId)];
 
-    protected override string ParsePlainPayload(byte[] plainPayload) => NuraResponseParsers.DecodeProfileName(plainPayload);
+    protected override string? ParsePlainPayload(byte[] plainPayload) => NuraResponseParsers.DecodeProfileName(plainPayload);
 }
