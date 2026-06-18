@@ -19,6 +19,14 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
     private readonly bool _ansiEnabled;
     private readonly bool _canPinHoistedSections;
     private readonly Timer? _resizeTimer;
+    private readonly SemaphoreSlim _inputGate = new(1, 1);
+    private readonly TimeSpan _keyPollInterval;
+    private readonly bool _keyIntercept;
+
+    private CancellationTokenSource? _keyListenerCts;
+    private Task? _keyListenerPump;
+    private int _keyListenerStarted;
+    private int _promptDepth;
 
     private readonly Dictionary<string, HoistedSection> _hoistedSections = new(StringComparer.Ordinal);
     private readonly List<string> _hoistedOrder = new();
@@ -36,8 +44,12 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
         bool? enableAnsi = null,
         bool enableAnsiWhenOutputRedirected = false,
         bool tryEnableWindowsVirtualTerminal = true,
-        int resizePollMilliseconds = 250) {
+        int resizePollMilliseconds = 250,
+        bool keyListenerIntercept = true,
+        int keyListenerPollMilliseconds = 25) {
         _writer = writer ?? Console.Out;
+        _keyIntercept = keyListenerIntercept;
+        _keyPollInterval = TimeSpan.FromMilliseconds(Math.Max(1, keyListenerPollMilliseconds));
 
         if (tryEnableWindowsVirtualTerminal)
             AnsiConsoleSupport.TryEnableVirtualTerminalProcessing();
@@ -74,6 +86,14 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
     public bool EnableHoistedBorder { get; set; } = false;
 
     public int MaxHoistedHeight { get; set; } = 8;
+
+    public bool IsPromptActive => Volatile.Read(ref _promptDepth) > 0;
+
+    public bool IsKeyListenerRunning => Volatile.Read(ref _keyListenerStarted) != 0;
+
+    public event Action<ConsoleKeyInfo>? KeyPressed;
+
+    public event Func<ConsoleKeyInfo, CancellationToken, ValueTask>? KeyPressedAsync;
 
     public Task Completion => _pump;
 
@@ -354,12 +374,54 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
         return completion.Task;
     }
 
+    public bool StartKeyListener() {
+        if (Console.IsInputRedirected)
+            return false;
+
+        if (IsCompleted)
+            return false;
+
+        if (Interlocked.CompareExchange(ref _keyListenerStarted, 1, 0) != 0)
+            return true;
+
+        CancellationTokenSource cts = new();
+        _keyListenerCts = cts;
+        _keyListenerPump = Task.Run(() => KeyListenerLoopAsync(cts.Token));
+
+        return true;
+    }
+
+    public async Task StopKeyListenerAsync() {
+        if (Interlocked.Exchange(ref _keyListenerStarted, 0) == 0)
+            return;
+
+        CancellationTokenSource? cts = _keyListenerCts;
+        Task? pump = _keyListenerPump;
+
+        if (cts != null)
+            await cts.CancelAsync().ConfigureAwait(false);
+
+        if (pump != null) {
+            try {
+                await pump.ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+            }
+        }
+
+        cts?.Dispose();
+
+        _keyListenerCts = null;
+        _keyListenerPump = null;
+    }
+
     public void Complete() {
         if (Interlocked.Exchange(ref _completed, 1) == 0)
             _queue.Writer.TryComplete();
     }
 
     public async Task StopAsync() {
+        await StopKeyListenerAsync().ConfigureAwait(false);
+
         Complete();
 
         _resizeTimer?.Dispose();
@@ -506,15 +568,20 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
 
     private async Task HandlePromptLineAsync(PromptLineCommand command) {
         try {
+            using IDisposable inputLease =
+                await EnterPromptInputAsync().ConfigureAwait(false);
+
             await BeginPromptAsync().ConfigureAwait(false);
 
-            await WritePromptCoreAsync(command.PromptParts).ConfigureAwait(false);
+            try {
+                await WritePromptCoreAsync(command.PromptParts).ConfigureAwait(false);
 
-            string? result = Console.ReadLine();
+                string? result = Console.ReadLine();
 
-            await EndPromptAsync().ConfigureAwait(false);
-
-            command.Completion.TrySetResult(result);
+                command.Completion.TrySetResult(result);
+            } finally {
+                await EndPromptAsync().ConfigureAwait(false);
+            }
         } catch (Exception ex) {
             command.Completion.TrySetException(ex);
         }
@@ -522,47 +589,151 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
 
     private async Task HandlePromptYesNoAsync(PromptYesNoCommand command) {
         try {
+            using IDisposable inputLease =
+                await EnterPromptInputAsync().ConfigureAwait(false);
+
             await BeginPromptAsync().ConfigureAwait(false);
 
-            while (true) {
-                await WritePromptCoreAsync(command.PromptParts).ConfigureAwait(false);
+            try {
+                while (true) {
+                    await WritePromptCoreAsync(command.PromptParts).ConfigureAwait(false);
 
-                ConsoleKeyInfo response = Console.ReadKey(intercept: true);
+                    ConsoleKeyInfo response = Console.ReadKey(intercept: true);
 
-                if (response.Key == ConsoleKey.Enter) {
-                    await _writer.WriteLineAsync("").ConfigureAwait(false);
-                    await EndPromptAsync().ConfigureAwait(false);
+                    if (response.Key == ConsoleKey.Enter) {
+                        await _writer.WriteLineAsync("").ConfigureAwait(false);
 
-                    command.Completion.TrySetResult(command.DefaultYes);
-                    return;
+                        command.Completion.TrySetResult(command.DefaultYes);
+                        return;
+                    }
+
+                    await _writer.WriteLineAsync(response.KeyChar.ToString()).ConfigureAwait(false);
+
+                    char lower = char.ToLowerInvariant(response.KeyChar);
+
+                    if (lower == 'y' || lower == '1') {
+                        command.Completion.TrySetResult(true);
+                        return;
+                    }
+
+                    if (lower == 'n' || lower == '0') {
+                        command.Completion.TrySetResult(false);
+                        return;
+                    }
+
+                    await WriteLogCoreAsync(
+                        new[]
+                        {
+                            AnsiPart.Warning("Please enter y or n.")
+                        }).ConfigureAwait(false);
                 }
-
-                await _writer.WriteLineAsync(response.KeyChar.ToString()).ConfigureAwait(false);
-
-                char lower = char.ToLowerInvariant(response.KeyChar);
-
-                if (lower == 'y' || lower == '1') {
-                    await EndPromptAsync().ConfigureAwait(false);
-
-                    command.Completion.TrySetResult(true);
-                    return;
-                }
-
-                if (lower == 'n' || lower == '0') {
-                    await EndPromptAsync().ConfigureAwait(false);
-
-                    command.Completion.TrySetResult(false);
-                    return;
-                }
-
-                await WriteLogCoreAsync(
-                    new[]
-                    {
-                        AnsiPart.Warning("Please enter y or n.")
-                    }).ConfigureAwait(false);
+            } finally {
+                await EndPromptAsync().ConfigureAwait(false);
             }
         } catch (Exception ex) {
             command.Completion.TrySetException(ex);
+        }
+    }
+
+    private async Task<IDisposable> EnterPromptInputAsync() {
+        Interlocked.Increment(ref _promptDepth);
+
+        try {
+            await _inputGate.WaitAsync().ConfigureAwait(false);
+            return new PromptInputLease(this);
+        } catch {
+            Interlocked.Decrement(ref _promptDepth);
+            throw;
+        }
+    }
+
+    private void ReleasePromptInput() {
+        Interlocked.Decrement(ref _promptDepth);
+        _inputGate.Release();
+    }
+
+    private async Task KeyListenerLoopAsync(CancellationToken cancellationToken) {
+        try {
+            while (!cancellationToken.IsCancellationRequested && !IsCompleted) {
+                if (Console.IsInputRedirected || IsPromptActive) {
+                    await Task.Delay(_keyPollInterval, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (!TryGetKeyAvailable(out bool available) || !available) {
+                    await Task.Delay(_keyPollInterval, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (!_inputGate.Wait(0)) {
+                    await Task.Delay(_keyPollInterval, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                ConsoleKeyInfo? key = null;
+
+                try {
+                    if (!IsPromptActive &&
+                        TryGetKeyAvailable(out available) &&
+                        available) {
+                        key = Console.ReadKey(intercept: _keyIntercept);
+                    }
+                } finally {
+                    _inputGate.Release();
+                }
+
+                if (key == null || IsPromptActive)
+                    continue;
+
+                DispatchKeyPressed(key.Value);
+
+                await DispatchKeyPressedAsync(key.Value, cancellationToken).ConfigureAwait(false);
+            }
+        } catch (OperationCanceledException) {
+        } finally {
+            Interlocked.Exchange(ref _keyListenerStarted, 0);
+        }
+    }
+
+    private void DispatchKeyPressed(ConsoleKeyInfo key) {
+        Action<ConsoleKeyInfo>? handlers = KeyPressed;
+
+        if (handlers == null)
+            return;
+
+        foreach (Delegate handlerDelegate in handlers.GetInvocationList()) {
+            Action<ConsoleKeyInfo> handler =
+                (Action<ConsoleKeyInfo>)handlerDelegate;
+
+            try {
+                handler(key);
+            } catch (Exception ex) {
+                WriteLine(
+                    AnsiPart.Error("Key handler failed: "),
+                    ex.Message);
+            }
+        }
+    }
+
+    private async ValueTask DispatchKeyPressedAsync(
+        ConsoleKeyInfo key,
+        CancellationToken cancellationToken) {
+        Func<ConsoleKeyInfo, CancellationToken, ValueTask>? handlers = KeyPressedAsync;
+
+        if (handlers == null)
+            return;
+
+        foreach (Delegate handlerDelegate in handlers.GetInvocationList()) {
+            Func<ConsoleKeyInfo, CancellationToken, ValueTask> handler =
+                (Func<ConsoleKeyInfo, CancellationToken, ValueTask>)handlerDelegate;
+
+            try {
+                await handler(key, cancellationToken).ConfigureAwait(false);
+            } catch (Exception ex) {
+                WriteLine(
+                    AnsiPart.Error("Async key handler failed: "),
+                    ex.Message);
+            }
         }
     }
 
@@ -1053,6 +1224,19 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
         }
     }
 
+    private static bool TryGetKeyAvailable(out bool available) {
+        try {
+            available = Console.KeyAvailable;
+            return true;
+        } catch (IOException) {
+            available = false;
+            return false;
+        } catch (InvalidOperationException) {
+            available = false;
+            return false;
+        }
+    }
+
     private static AnsiPart[] CopyParts(IEnumerable<AnsiPart> parts) {
         return parts.ToArray();
     }
@@ -1074,6 +1258,22 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
             throw new OperationCanceledException(cancellationToken);
 
         await task.ConfigureAwait(false);
+    }
+
+    private sealed class PromptInputLease : IDisposable {
+        private readonly AsyncConsoleLogger _owner;
+        private int _disposed;
+
+        public PromptInputLease(AsyncConsoleLogger owner) {
+            _owner = owner;
+        }
+
+        public void Dispose() {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+
+            _owner.ReleasePromptInput();
+        }
     }
 
     private sealed class HoistedSection {
