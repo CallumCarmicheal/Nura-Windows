@@ -542,6 +542,7 @@ Properties:
 - `EffectiveImmersionLevel`
 - `ProEqEnabled`
 - `ProEq`
+- `Battery`
 
 Events:
 
@@ -556,6 +557,7 @@ Events:
 - `EffectiveImmersionLevelChanged`
 - `ProEqEnabledChanged`
 - `ProEqChanged`
+- `BatteryChanged`
 
 ### Read state
 
@@ -567,6 +569,7 @@ Console.WriteLine($"ANC level: {connected.State.AncLevel}");
 Console.WriteLine($"Spatial: {connected.State.SpatialEnabled}");
 Console.WriteLine($"Mode: {connected.State.PersonalisationMode}");
 Console.WriteLine($"Immersion: {connected.State.ImmersionLevel}");
+Console.WriteLine($"Battery: {connected.State.Battery?.BatteryPercentage}%");
 ```
 
 ### Subscribe to state changes
@@ -581,7 +584,25 @@ connected.State.ImmersionLevelChanged += (_, args) =>
 {
     Console.WriteLine($"Immersion changed: {args.Previous} -> {args.Current}");
 };
+
+connected.State.BatteryChanged += (_, args) =>
+{
+    Console.WriteLine($"Battery changed: {args.Current?.BatteryPercentage}%");
+};
 ```
+
+### Battery
+
+Battery status is exposed as `NuraBatteryStatus` on `connected.State.Battery`.
+
+`RefreshAsync()` reads battery status as part of the full device refresh. You can also request it directly:
+
+```csharp
+var battery = await connected.State.RetrieveBatteryAsync();
+Console.WriteLine($"Battery: {battery?.BatteryPercentage}%");
+```
+
+The model includes the decoded percentage plus raw voltage, charger, and NTC fields for hosts that want to show more detailed diagnostics.
 
 ### ANC example
 
@@ -998,6 +1019,8 @@ dotnet run --project .\NuraApp\NuraApp.csproj
 ```
 
 The sample intentionally keeps all UI code in the app layer. It uses `NuraLib` only for auth, device discovery, provisioning, refresh, and monitoring.
+
+The selected-device display is capability-aware. It shows device family, profile, battery percentage, firmware/key/session status, and only the controls or feature chips that apply to the selected headset family and firmware.
 
 The important sequence is:
 

@@ -264,6 +264,13 @@ static class Program {
                     $"{device.Info.DisplayName}: AncEnabledChanged : {data.Current?.ToString() ?? "<null>"}.");
             };
 
+            device.State.BatteryChanged += (_, data) => {
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                    $"{device.Info.DisplayName}: Battery : {FormatBattery(data.Current) ?? "<null>"}.");
+            };
+
             device.Changed += (_, data) => {
                 // We received data.
                 // logger.WriteLine(
@@ -495,23 +502,44 @@ static class Program {
         var titleSegments = new List<object> {
             AnsiPart.Dim(BuildSelectedDeviceHotkeyHint(device)),
             NuraGradient.Text(device.Info.DisplayName),
-            AnsiPart.FgHex("  ", 0x64748B)
+            AnsiPart.FgHex("  ", 0x64748B),
+            AnsiPart.FgHex(device.Info.TypeName, 0xCBD5E1)
         };
         var stateSegments = new List<object>();
 
         if (device is ConnectedNuraDevice live) {
             if (live.ProvisioningRequired == true) {
-                AddChip(stateSegments, "provision", FormatProvisionReason(live.ProvisioningRequirementReason), 0xF59E0B);
+                AddChip(stateSegments, "provision", FormatProvisionReason(live.ProvisioningRequirementReason), 0xF59E0B, addPrefix: false);
             } else if (!live.HasPersistentDeviceKey) {
-                AddChip(stateSegments, "key", "missing", 0xF59E0B);
+                AddChip(stateSegments, "key", "missing", 0xF59E0B, addPrefix: false);
             } else {
-                AddChip(titleSegments, "profile", FormatProfile(live), 0xA78BFA);
+                if (live.Info.Supports(NuraSystemCapabilities.Profiles)) {
+                    AddChip(titleSegments, "profile", FormatProfile(live), 0xA78BFA);
+                }
 
-                AddBoolChip(stateSegments, "ANC", live.State.AncEnabled, 0x22C55E, addPrefix: false);
-                AddBoolChip(stateSegments, "pass", live.State.PassthroughEnabled, 0x06B6D4);
-                AddChip(stateSegments, "imm", FormatImmersion(live.State.EffectiveImmersionLevel ?? live.State.ImmersionLevel), 0xF97316);
-                AddChip(stateSegments, "mode", FormatPersonalisation(live.State.PersonalisationMode), 0xEC4899);
-                AddBoolChip(stateSegments, "spatial", live.State.SpatialEnabled, 0x38BDF8);
+                AddChip(titleSegments, "battery", FormatBattery(live.State.Battery), 0x22C55E);
+
+                AddSupportedBoolChip(stateSegments, live, NuraAudioCapabilities.Anc, "ANC", live.State.AncEnabled, 0x22C55E, addPrefix: false);
+                AddSupportedBoolChip(stateSegments, live, NuraAudioCapabilities.Anc, "pass", live.State.PassthroughEnabled, 0x06B6D4);
+                AddSupportedChip(stateSegments, live, NuraAudioCapabilities.AncLevel, "ANC lvl", live.State.AncLevel?.ToString(), 0x22D3EE);
+                AddSupportedBoolChip(stateSegments, live, NuraAudioCapabilities.GlobalAncToggle, "global ANC", live.State.GlobalAncEnabled, 0x22C55E);
+                AddSupportedChip(stateSegments, live, NuraAudioCapabilities.Immersion, "imm", FormatImmersion(live.State.EffectiveImmersionLevel ?? live.State.ImmersionLevel), 0xF97316);
+                AddSupportedChip(stateSegments, live, NuraAudioCapabilities.PersonalisedMode, "mode", FormatPersonalisation(live.State.PersonalisationMode), 0xEC4899);
+                AddSupportedBoolChip(stateSegments, live, NuraAudioCapabilities.Spatial, "spatial", live.State.SpatialEnabled, 0x38BDF8);
+                AddReadOnlyFeatureChip(stateSegments, live, NuraAudioCapabilities.ProEq, "ProEQ");
+                AddReadOnlyFeatureChip(stateSegments, live, NuraAudioCapabilities.EuAttenuation, "EU limit");
+                AddReadOnlyFeatureChip(stateSegments, live, NuraInteractionCapabilities.Dial, "dial");
+                AddReadOnlyFeatureChip(stateSegments, live, NuraInteractionCapabilities.TouchButtons, "buttons");
+                AddReadOnlyFeatureChip(stateSegments, live, NuraInteractionCapabilities.HeadDetection, "head detect");
+                if (live.Info.Supports(NuraInteractionCapabilities.VoicePromptGain)) {
+                    AddChip(stateSegments, "voice", live.Configuration.VoicePromptGain?.ToString().ToLowerInvariant() ?? "supported", 0x94A3B8, addPrefix: stateSegments.Count > 0);
+                }
+                AddReadOnlyFeatureChip(stateSegments, live, NuraSystemCapabilities.Multipoint, "multipoint");
+                AddReadOnlyFeatureChip(stateSegments, live, NuraSystemCapabilities.BulkCommands, "bulk");
+                if (live.Info.IsTws) {
+                    AddChip(stateSegments, "TWS", "yes", 0x38BDF8, addPrefix: stateSegments.Count > 0);
+                }
+
                 AddChip(stateSegments, "enc-key", "ok", 0x22C55E);
                 AddBoolChip(stateSegments, "local", live.HasLocalSession, 0x84CC16);
                 AddBoolChip(stateSegments, "mon", live.IsMonitoring, 0x84CC16);
@@ -557,8 +585,28 @@ static class Program {
                 await ToggleSelectedPassthroughAsync(cancellationToken).ConfigureAwait(false);
                 return;
 
+            case ConsoleKey.B:
+                await RefreshSelectedBatteryAsync(cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.G:
+                await ToggleSelectedGlobalAncAsync(cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.Oem4:
+                await AdjustSelectedAncLevelAsync(-1, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.Oem6:
+                await AdjustSelectedAncLevelAsync(1, cancellationToken).ConfigureAwait(false);
+                return;
+
             case ConsoleKey.N:
                 await ToggleSelectedPersonalisationAsync(cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.V:
+                await CycleSelectedVoicePromptGainAsync(cancellationToken).ConfigureAwait(false);
                 return;
 
             case ConsoleKey.S:
@@ -604,6 +652,10 @@ static class Program {
 
         if (key.KeyChar == '?') {
             PrintHotkeyHelp();
+        } else if (key.KeyChar == '[') {
+            await AdjustSelectedAncLevelAsync(-1, cancellationToken).ConfigureAwait(false);
+        } else if (key.KeyChar == ']') {
+            await AdjustSelectedAncLevelAsync(1, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -718,10 +770,27 @@ static class Program {
             cancellationToken);
     }
 
+    private static Task RefreshSelectedBatteryAsync(CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            "refresh battery",
+            async (device, ct) => {
+                var battery = await device.State.RetrieveBatteryAsync(ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("battery "),
+                        FormatBattery(battery) ?? "unknown"));
+            },
+            cancellationToken);
+    }
+
     private static Task ToggleSelectedAncAsync(CancellationToken cancellationToken) {
         return RunSelectedDeviceActionAsync(
             "toggle ANC",
             async (device, ct) => {
+                if (!EnsureSelectedDeviceSupports(device, NuraAudioCapabilities.Anc, "ANC")) {
+                    return;
+                }
+
                 var current = device.State.AncEnabled ?? await device.State.RetrieveAncEnabledAsync(ct).ConfigureAwait(false) ?? false;
                 var next = !current;
                 await device.State.SetAncEnabledAsync(next, ct).ConfigureAwait(false);
@@ -737,6 +806,11 @@ static class Program {
         return RunSelectedDeviceActionAsync(
             "toggle passthrough",
             async (device, ct) => {
+                if (!EnsureSelectedDeviceSupports(device, NuraAudioCapabilities.Anc, "passthrough/social mode") ||
+                    !EnsureSelectedDeviceSupportsPassthrough(device)) {
+                    return;
+                }
+
                 var current = device.State.PassthroughEnabled ?? await device.State.RetrievePassthroughEnabledAsync(ct).ConfigureAwait(false) ?? false;
                 var next = !current;
                 await device.State.SetPassthroughEnabledAsync(next, ct).ConfigureAwait(false);
@@ -748,10 +822,60 @@ static class Program {
             cancellationToken);
     }
 
+    private static Task AdjustSelectedAncLevelAsync(int delta, CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            delta > 0 ? "ANC level up" : "ANC level down",
+            async (device, ct) => {
+                if (!EnsureSelectedDeviceSupports(device, NuraAudioCapabilities.AncLevel, "ANC level")) {
+                    return;
+                }
+
+                var current = device.State.AncLevel ?? await device.State.RetrieveAncLevelAsync(ct).ConfigureAwait(false) ?? 0;
+                var next = Math.Clamp(current + delta, 0, 6);
+                if (next == current) {
+                    FlashSelectedDeviceStatusText(
+                        AnsiLine.From(
+                            AnsiPart.Dim("ANC level already "),
+                            current.ToString()));
+                    return;
+                }
+
+                await device.State.SetAncLevelAsync(next, ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("ANC level "),
+                        next.ToString()));
+            },
+            cancellationToken);
+    }
+
+    private static Task ToggleSelectedGlobalAncAsync(CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            "toggle global ANC",
+            async (device, ct) => {
+                if (!EnsureSelectedDeviceSupports(device, NuraAudioCapabilities.GlobalAncToggle, "global ANC")) {
+                    return;
+                }
+
+                var current = device.State.GlobalAncEnabled ?? await device.State.RetrieveGlobalAncEnabledAsync(ct).ConfigureAwait(false) ?? false;
+                var next = !current;
+                await device.State.SetGlobalAncEnabledAsync(next, ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("global ANC "),
+                        FormatBool(next)));
+            },
+            cancellationToken);
+    }
+
     private static Task ToggleSelectedPersonalisationAsync(CancellationToken cancellationToken) {
         return RunSelectedDeviceActionAsync(
             "toggle personalisation",
             async (device, ct) => {
+                if (!EnsureSelectedDeviceSupports(device, NuraAudioCapabilities.PersonalisedMode, "personalisation")) {
+                    return;
+                }
+
                 var current = device.State.PersonalisationMode ??
                               await device.State.RetrievePersonalisationModeAsync(ct).ConfigureAwait(false) ??
                               NuraPersonalisationMode.Neutral;
@@ -767,10 +891,38 @@ static class Program {
             cancellationToken);
     }
 
+    private static Task CycleSelectedVoicePromptGainAsync(CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            "cycle voice prompt gain",
+            async (device, ct) => {
+                if (!EnsureSelectedDeviceSupports(device, NuraInteractionCapabilities.VoicePromptGain, "voice prompt gain")) {
+                    return;
+                }
+
+                var current = device.Configuration.VoicePromptGain ?? NuraVoicePromptGain.Medium;
+                var next = current switch {
+                    NuraVoicePromptGain.Low => NuraVoicePromptGain.Medium,
+                    NuraVoicePromptGain.Medium => NuraVoicePromptGain.High,
+                    NuraVoicePromptGain.High => NuraVoicePromptGain.Low,
+                    _ => NuraVoicePromptGain.Medium
+                };
+                await device.Configuration.SetVoicePromptGainAsync(next, ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("voice prompt "),
+                        next.ToString().ToLowerInvariant()));
+            },
+            cancellationToken);
+    }
+
     private static Task ToggleSelectedSpatialAsync(CancellationToken cancellationToken) {
         return RunSelectedDeviceActionAsync(
             "toggle spatial",
             async (device, ct) => {
+                if (!EnsureSelectedDeviceSupports(device, NuraAudioCapabilities.Spatial, "spatial audio")) {
+                    return;
+                }
+
                 var current = device.State.SpatialEnabled ?? await device.State.RetrieveSpatialEnabledAsync(ct).ConfigureAwait(false) ?? false;
                 var next = !current;
                 await device.State.SetSpatialEnabledAsync(next, ct).ConfigureAwait(false);
@@ -786,6 +938,10 @@ static class Program {
         return RunSelectedDeviceActionAsync(
             delta > 0 ? "immersion up" : "immersion down",
             async (device, ct) => {
+                if (!EnsureSelectedDeviceSupports(device, NuraAudioCapabilities.Immersion, "immersion")) {
+                    return;
+                }
+
                 var current = device.State.ImmersionLevel ??
                               await device.State.RetrieveImmersionLevelAsync(ct).ConfigureAwait(false) ??
                               device.Info.DefaultImmersionLevel;
@@ -813,6 +969,10 @@ static class Program {
         return RunSelectedDeviceActionAsync(
             $"select profile {profileId + 1}",
             async (device, ct) => {
+                if (!EnsureSelectedDeviceSupports(device, NuraSystemCapabilities.Profiles, "profiles")) {
+                    return;
+                }
+
                 await device.Profiles.SetProfileIdAsync(profileId, ct).ConfigureAwait(false);
 
                 var profileName = device.Profiles.Names.TryGetValue(profileId, out var name) && !string.IsNullOrWhiteSpace(name)
@@ -845,17 +1005,26 @@ static class Program {
     }
 
     private static void PrintHotkeyHelp() {
+        var device = GetSelectedConnectedDevice();
         logger.WriteLine(
             AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
             AnsiPart.FgHex("[NuraApp] ", 0x06B6D4),
-            "Hotkeys:");
-        logger.WriteLine("  ←/→ select device");
-        logger.WriteLine("  ↑/↓ or +/- immersion up/down");
-        logger.WriteLine("  a toggle ANC");
-        logger.WriteLine("  p toggle passthrough/social mode");
-        logger.WriteLine("  n toggle personalised/neutral");
-        logger.WriteLine("  s toggle spatial, when supported");
-        logger.WriteLine("  1/2/3 select profile slot");
+            device is null ? "Hotkeys:" : $"Hotkeys for {device.Info.DisplayName} ({device.Info.TypeName}):");
+        logger.WriteLine("  ←/→ select device, when multiple devices are connected");
+        if (device?.Info.Supports(NuraAudioCapabilities.Immersion) == true) logger.WriteLine("  ↑/↓ or +/- immersion up/down");
+        if (device?.Info.Supports(NuraAudioCapabilities.Anc) == true) {
+            logger.WriteLine("  a toggle ANC");
+            if (SupportsPassthroughHotkey(device)) {
+                logger.WriteLine("  p toggle passthrough/social mode");
+            }
+        }
+        if (device?.Info.Supports(NuraAudioCapabilities.AncLevel) == true) logger.WriteLine("  [ / ] adjust ANC level");
+        if (device?.Info.Supports(NuraAudioCapabilities.GlobalAncToggle) == true) logger.WriteLine("  g toggle global ANC");
+        if (device?.Info.Supports(NuraAudioCapabilities.PersonalisedMode) == true) logger.WriteLine("  n toggle personalised/neutral");
+        if (device?.Info.Supports(NuraAudioCapabilities.Spatial) == true) logger.WriteLine("  s toggle spatial");
+        if (device?.Info.Supports(NuraInteractionCapabilities.VoicePromptGain) == true) logger.WriteLine("  v cycle voice prompt gain");
+        if (device?.Info.Supports(NuraSystemCapabilities.Profiles) == true) logger.WriteLine("  1/2/3 select profile slot");
+        logger.WriteLine("  b refresh battery");
         logger.WriteLine("  r refresh selected device");
         logger.WriteLine("  t toggle Nura debug/trace logging");
         logger.WriteLine("  h or ? show help");
@@ -943,10 +1112,38 @@ static class Program {
             parts.Add(selectHint);
         }
 
-        parts.Add("↑/↓ imm");
-        parts.Add("a ANC");
-        parts.Add("p pass");
-        parts.Add("n mode");
+        if (selectedDevice.Info.Supports(NuraAudioCapabilities.Immersion)) {
+            parts.Add("↑/↓ imm");
+        }
+
+        if (selectedDevice.Info.Supports(NuraAudioCapabilities.Anc)) {
+            parts.Add("a ANC");
+            if (SupportsPassthroughHotkey(selectedDevice)) {
+                parts.Add("p pass");
+            }
+        }
+
+        if (selectedDevice.Info.Supports(NuraAudioCapabilities.AncLevel)) {
+            parts.Add("[/] ANC lvl");
+        }
+
+        if (selectedDevice.Info.Supports(NuraAudioCapabilities.GlobalAncToggle)) {
+            parts.Add("g global");
+        }
+
+        if (selectedDevice.Info.Supports(NuraAudioCapabilities.PersonalisedMode)) {
+            parts.Add("n mode");
+        }
+
+        if (selectedDevice.Info.Supports(NuraAudioCapabilities.Spatial)) {
+            parts.Add("s spatial");
+        }
+
+        if (selectedDevice.Info.Supports(NuraInteractionCapabilities.VoicePromptGain)) {
+            parts.Add("v voice");
+        }
+
+        parts.Add("b battery");
         parts.Add("r refresh");
         parts.Add("t trace");
         parts.Add("h help");
@@ -980,6 +1177,98 @@ static class Program {
             addPrefix);
     }
 
+    static void AddSupportedChip(List<object> segments, ConnectedNuraDevice device, NuraAudioCapabilities capability, string label, string? value, int valueColour) {
+        if (!device.Info.Supports(capability)) {
+            return;
+        }
+
+        AddChip(segments, label, value ?? "?", value is null ? 0x94A3B8 : valueColour, addPrefix: segments.Count > 0);
+    }
+
+    static void AddSupportedBoolChip(List<object> segments, ConnectedNuraDevice device, NuraAudioCapabilities capability, string label, bool? value, int onColour, bool addPrefix = true) {
+        if (!device.Info.Supports(capability)) {
+            return;
+        }
+
+        if (value is null) {
+            AddChip(segments, label, "?", 0x94A3B8, addPrefix: addPrefix && segments.Count > 0);
+            return;
+        }
+
+        AddBoolChip(segments, label, value, onColour, addPrefix: addPrefix && segments.Count > 0);
+    }
+
+    static void AddReadOnlyFeatureChip(List<object> segments, ConnectedNuraDevice device, NuraAudioCapabilities capability, string label) {
+        if (device.Info.Supports(capability)) {
+            AddChip(segments, label, "supported", 0x94A3B8, addPrefix: segments.Count > 0);
+        }
+    }
+
+    static void AddReadOnlyFeatureChip(List<object> segments, ConnectedNuraDevice device, NuraInteractionCapabilities capability, string label) {
+        if (device.Info.Supports(capability)) {
+            AddChip(segments, label, "supported", 0x94A3B8, addPrefix: segments.Count > 0);
+        }
+    }
+
+    static void AddReadOnlyFeatureChip(List<object> segments, ConnectedNuraDevice device, NuraSystemCapabilities capability, string label) {
+        if (device.Info.Supports(capability)) {
+            AddChip(segments, label, "supported", 0x94A3B8, addPrefix: segments.Count > 0);
+        }
+    }
+
+    private static bool EnsureSelectedDeviceSupports(ConnectedNuraDevice device, NuraAudioCapabilities capability, string featureName) {
+        if (device.Info.Supports(capability)) {
+            return true;
+        }
+
+        FlashSelectedDeviceStatusText(
+            AnsiLine.From(
+                AnsiPart.Warning(featureName),
+                $" is not supported on {device.Info.TypeName}."));
+        return false;
+    }
+
+    private static bool EnsureSelectedDeviceSupports(ConnectedNuraDevice device, NuraInteractionCapabilities capability, string featureName) {
+        if (device.Info.Supports(capability)) {
+            return true;
+        }
+
+        FlashSelectedDeviceStatusText(
+            AnsiLine.From(
+                AnsiPart.Warning(featureName),
+                $" is not supported on {device.Info.TypeName}."));
+        return false;
+    }
+
+    private static bool EnsureSelectedDeviceSupports(ConnectedNuraDevice device, NuraSystemCapabilities capability, string featureName) {
+        if (device.Info.Supports(capability)) {
+            return true;
+        }
+
+        FlashSelectedDeviceStatusText(
+            AnsiLine.From(
+                AnsiPart.Warning(featureName),
+                $" is not supported on {device.Info.TypeName}."));
+        return false;
+    }
+
+    private static bool EnsureSelectedDeviceSupportsPassthrough(ConnectedNuraDevice device) {
+        if (SupportsPassthroughHotkey(device)) {
+            return true;
+        }
+
+        FlashSelectedDeviceStatusText(
+            AnsiLine.From(
+                AnsiPart.Warning("passthrough/social mode"),
+                $" is not supported by the currently wired transport for {device.Info.TypeName}."));
+        return false;
+    }
+
+    private static bool SupportsPassthroughHotkey(NuraDevice device) =>
+        device.Info.Supports(NuraAudioCapabilities.Anc) &&
+        !device.Info.Supports(NuraAudioCapabilities.GlobalAncToggle) &&
+        (device.Info.DeviceType != NuraDeviceType.Nuraphone || device.Info.FirmwareVersion > 510);
+
     static string? FormatBool(bool? value) =>
         value switch {
             true => "on",
@@ -1000,6 +1289,9 @@ static class Program {
             null => null,
             _ => mode.ToString()
         };
+
+    static string? FormatBattery(NuraBatteryStatus? battery) =>
+        battery is null ? null : $"{battery.BatteryPercentage}%";
 
     static string? FormatProfile(ConnectedNuraDevice device) {
         if (device.Profiles.ProfileId is not { } profileId) {

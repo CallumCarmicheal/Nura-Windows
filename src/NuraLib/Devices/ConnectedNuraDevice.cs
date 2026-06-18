@@ -279,6 +279,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
             await RefreshProfilesAsync(cancellationToken);
             await RefreshConfigurationAsync(cancellationToken);
             await RefreshStateAsync(cancellationToken);
+            await RetrieveBatteryStatusAsync(cancellationToken);
 
             UpdateOperationStatus(
                 NuraDeviceOperationKind.Refresh,
@@ -332,6 +333,23 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
         if (Info.Supports(NuraAudioCapabilities.Spatial)) {
             await RetrieveSpatialEnabledAsync(cancellationToken);
+        }
+    }
+
+    internal async Task<NuraBatteryStatus?> RetrieveBatteryStatusAsync(CancellationToken cancellationToken) {
+        await EnsureConnectedAsync(cancellationToken);
+        try {
+            var status = await NuraLocalSessionSupport.ReadBatteryStatusAsync(_session!, _logger, cancellationToken);
+            State.UpdateBattery(status);
+            return status;
+        } catch (GaiaCommandException ex) {
+            _logger.Debug(
+                Source,
+                $"Battery refresh skipped for {Info.Serial}: request=0x{(ushort)ex.RequestCommandId:x4} expected=0x{(ushort)ex.ExpectedResponseCommandId:x4} actual=0x{(ushort)ex.ResponseCommandId:x4} status=0x{ex.Status:x2}");
+            return null;
+        } catch (Exception ex) {
+            _logger.Debug(Source, $"Battery refresh skipped for {Info.Serial}: {ex.Message}");
+            return null;
         }
     }
 

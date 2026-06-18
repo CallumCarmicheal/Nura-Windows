@@ -54,6 +54,8 @@ internal static class NuraCommandFactory {
 
     public static SetSpatialStateCommand CreateSetSpatialState(bool enabled) => new(enabled);
 
+    public static GetBatteryStatusCommand CreateGetBatteryStatus() => new();
+
     public static GetButtonConfigurationCommand CreateGetButtonConfiguration(NuraDeviceInfo deviceInfo, int profileId) =>
         new(deviceInfo, profileId);
 

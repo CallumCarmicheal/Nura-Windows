@@ -253,6 +253,16 @@ internal static class NuraLocalSessionSupport {
         logger.Trace(Source, $"spatial_set.ack.hex={HexEncoding.Format(ack)}");
     }
 
+    public static async Task<NuraBatteryStatus> ReadBatteryStatusAsync(
+        ConnectedNuraDeviceSession session,
+        NuraClientLogger logger,
+        CancellationToken cancellationToken) {
+        var command = NuraCommandFactory.CreateGetBatteryStatus();
+        var status = await session.ExecuteAsync(command, cancellationToken);
+        logger.Trace(Source, $"battery.command={command.Name}");
+        return status;
+    }
+
     public static async Task<NuraButtonConfiguration> ReadButtonConfigurationAsync(
         ConnectedNuraDeviceSession session,
         NuraClientLogger logger,

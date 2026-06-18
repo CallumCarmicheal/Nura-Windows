@@ -115,6 +115,21 @@ internal static class NuraResponseParsers {
 
     public static bool DecodeBooleanFlag(byte[] payload) => ReadRequiredByte(payload, "Boolean") != 0x00;
 
+    public static Devices.NuraBatteryStatus DecodeBatteryStatus(byte[] payload) {
+        RequireMinimumLength(payload, 11, "Battery status");
+
+        return new Devices.NuraBatteryStatus {
+            BatteryVoltageMillivolts = ReadUInt16BigEndian(payload, 0),
+            BatteryLevelRaw = payload[2],
+            BatteryPercentage = payload[3],
+            ChargerStateRaw = payload[4],
+            ChargerVoltageMillivolts = ReadUInt16BigEndian(payload, 5),
+            ChargerLevelRaw = payload[7],
+            NtcVoltageMillivolts = ReadUInt16BigEndian(payload, 8),
+            NtcLevelRaw = payload[10]
+        };
+    }
+
     public static Devices.NuraPersonalisationMode DecodePersonalisedMode(byte[] payload) {
         return ReadRequiredByte(payload, "Personalised mode") == 0x00
             ? Devices.NuraPersonalisationMode.Personalised

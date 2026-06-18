@@ -47,6 +47,8 @@ internal sealed class CommandRoundTripTests {
         AncCommands_RoundTrip();
         AncLevelAndGlobalAncCommands_RoundTrip();
         KickitAndSpatialCommands_RoundTrip();
+        BatteryStatus_Command_RoundTrip();
+        BatteryStatus_Decode_ValidatesPayloadLength();
         ButtonConfigurationCommands_RoundTrip();
         DialAndVoicePromptCommands_RoundTrip();
     }
@@ -237,6 +239,34 @@ internal sealed class CommandRoundTripTests {
             expectedPlainRequestHex: "017b01",
             responsePlainPayloadHex: "00",
             assertResponse: response => AssertTrue(response.Length == 0, nameof(KickitAndSpatialCommands_RoundTrip), "Expected empty spatial ack payload."));
+    }
+
+    private static void BatteryStatus_Command_RoundTrip() {
+        AssertAuthenticatedRoundTrip(
+            NuraCommandFactory.CreateGetBatteryStatus(),
+            CreateRuntime(),
+            expectedPlainRequestHex: "007f",
+            responsePlainPayloadHex: "000fa05550010012cc01f488",
+            assertResponse: response => {
+                AssertEqual(4000, response.BatteryVoltageMillivolts, nameof(BatteryStatus_Command_RoundTrip));
+                AssertEqual(85, response.BatteryLevelRaw, nameof(BatteryStatus_Command_RoundTrip));
+                AssertEqual(80, response.BatteryPercentage, nameof(BatteryStatus_Command_RoundTrip));
+                AssertEqual(1, response.ChargerStateRaw, nameof(BatteryStatus_Command_RoundTrip));
+                AssertEqual(18, response.ChargerVoltageMillivolts, nameof(BatteryStatus_Command_RoundTrip));
+                AssertEqual(204, response.ChargerLevelRaw, nameof(BatteryStatus_Command_RoundTrip));
+                AssertEqual(500, response.NtcVoltageMillivolts, nameof(BatteryStatus_Command_RoundTrip));
+                AssertEqual(136, response.NtcLevelRaw, nameof(BatteryStatus_Command_RoundTrip));
+            });
+    }
+
+    private static void BatteryStatus_Decode_ValidatesPayloadLength() {
+        try {
+            NuraResponseParsers.DecodeBatteryStatus([0x00, 0x01]);
+        } catch (InvalidOperationException) {
+            return;
+        }
+
+        throw new InvalidOperationException($"{nameof(BatteryStatus_Decode_ValidatesPayloadLength)}: expected short payload to fail.");
     }
 
     private static void ButtonConfigurationCommands_RoundTrip() {

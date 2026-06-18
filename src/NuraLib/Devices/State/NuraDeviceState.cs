@@ -13,6 +13,7 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
     private NuraImmersionLevel? _effectiveImmersionLevel;
     private bool? _proEqEnabled;
     private NuraProEq? _proEq;
+    private NuraBatteryStatus? _battery;
 
     /// <summary>
     /// Raised when the cached ANC state changes.
@@ -48,6 +49,8 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
 
     public event EventHandler<NuraValueChangedEventArgs<NuraProEq?>>? ProEqChanged;
 
+    public event EventHandler<NuraValueChangedEventArgs<NuraBatteryStatus?>>? BatteryChanged;
+
     /// <summary>
     /// Gets the last known ANC state for the connected device.
     /// </summary>
@@ -81,6 +84,8 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
     public bool? ProEqEnabled => _proEqEnabled;
 
     public NuraProEq? ProEq => _proEq;
+
+    public NuraBatteryStatus? Battery => _battery;
 
     internal void UpdateAnc(NuraAncState? state) {
         var previous = _anc;
@@ -185,6 +190,15 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         _proEq = proEq;
         if (!Equals(previous, proEq)) {
             ProEqChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraProEq?>(previous, proEq));
+            nuraDevice.RaiseChanged();
+        }
+    }
+
+    internal void UpdateBattery(NuraBatteryStatus? battery) {
+        var previous = _battery;
+        _battery = battery;
+        if (!Equals(previous, battery)) {
+            BatteryChanged?.Invoke(nuraDevice, new NuraValueChangedEventArgs<NuraBatteryStatus?>(previous, battery));
             nuraDevice.RaiseChanged();
         }
     }
@@ -329,6 +343,11 @@ public sealed class NuraDeviceState(ConnectedNuraDevice nuraDevice) {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureAudioCapability(NuraAudioCapabilities.Immersion, "Effective immersion level");
         return SetImmersionLevelAsync(level, cancellationToken);
+    }
+
+    public Task<NuraBatteryStatus?> RetrieveBatteryAsync(CancellationToken cancellationToken = default) {
+        cancellationToken.ThrowIfCancellationRequested();
+        return nuraDevice.RetrieveBatteryStatusAsync(cancellationToken);
     }
 
     [Utilities.Docs.BluetoothImplementationRequired("State", Notes = "Needs transport-backed ProEQ enabled retrieval from the headset.")]
