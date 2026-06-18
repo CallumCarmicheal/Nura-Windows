@@ -1,4 +1,5 @@
-﻿namespace NuraApp;
+﻿
+namespace NuraApp;
 
 using System;
 using System.Collections.Generic;
@@ -11,204 +12,10 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
-public sealed class ConsoleInputCoordinator {
-    private readonly SemaphoreSlim _inputGate = new(1, 1);
-    private int _promptDepth;
-
-    public bool IsPromptMode => Volatile.Read(ref _promptDepth) > 0;
-
-    public async ValueTask<IDisposable> EnterPromptModeAsync(
-        CancellationToken cancellationToken = default) {
-        Interlocked.Increment(ref _promptDepth);
-
-        try {
-            await _inputGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return new Lease(this, isPromptLease: true);
-        } catch {
-            Interlocked.Decrement(ref _promptDepth);
-            throw;
-        }
-    }
-
-    public bool TryEnterListenerRead(out IDisposable lease) {
-        lease = null!;
-
-        if (IsPromptMode)
-            return false;
-
-        if (!_inputGate.Wait(0))
-            return false;
-
-        if (IsPromptMode) {
-            _inputGate.Release();
-            return false;
-        }
-
-        lease = new Lease(this, isPromptLease: false);
-        return true;
-    }
-
-    private void ReleasePrompt() {
-        Interlocked.Decrement(ref _promptDepth);
-        _inputGate.Release();
-    }
-
-    private void ReleaseListener() {
-        _inputGate.Release();
-    }
-
-    private sealed class Lease : IDisposable {
-        private readonly ConsoleInputCoordinator _owner;
-        private readonly bool _isPromptLease;
-        private int _disposed;
-
-        public Lease(ConsoleInputCoordinator owner, bool isPromptLease) {
-            _owner = owner;
-            _isPromptLease = isPromptLease;
-        }
-
-        public void Dispose() {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
-                return;
-
-            if (_isPromptLease)
-                _owner.ReleasePrompt();
-            else
-                _owner.ReleaseListener();
-        }
-    }
-}
-
-public sealed class AsyncConsoleKeyListener : IAsyncDisposable {
-    private readonly ConsoleInputCoordinator _input;
-    private readonly Channel<ConsoleKeyInfo> _keys;
-    private readonly CancellationTokenSource _stop = new();
-    private readonly TimeSpan _pollInterval;
-    private readonly bool _intercept;
-
-    private Task? _pump;
-
-    public AsyncConsoleKeyListener(
-        ConsoleInputCoordinator input,
-        bool intercept = true,
-        TimeSpan? pollInterval = null) {
-        _input = input ?? throw new ArgumentNullException(nameof(input));
-        _intercept = intercept;
-        _pollInterval = pollInterval ?? TimeSpan.FromMilliseconds(25);
-
-        _keys = Channel.CreateUnbounded<ConsoleKeyInfo>(
-            new UnboundedChannelOptions {
-                SingleReader = false,
-                SingleWriter = true,
-                AllowSynchronousContinuations = false
-            });
-    }
-
-    public event Func<ConsoleKeyInfo, CancellationToken, ValueTask>? KeyPressed;
-
-    public IAsyncEnumerable<ConsoleKeyInfo> ReadAllAsync(
-        CancellationToken cancellationToken = default) {
-        return _keys.Reader.ReadAllAsync(cancellationToken);
-    }
-
-    public void Start() {
-        if (_pump != null)
-            return;
-
-        _pump = Task.Run(PumpAsync);
-    }
-
-    private async Task PumpAsync() {
-        try {
-            while (!_stop.IsCancellationRequested) {
-                if (Console.IsInputRedirected || _input.IsPromptMode) {
-                    await Task.Delay(_pollInterval, _stop.Token).ConfigureAwait(false);
-                    continue;
-                }
-
-                if (!TryGetKeyAvailable(out bool available) || !available) {
-                    await Task.Delay(_pollInterval, _stop.Token).ConfigureAwait(false);
-                    continue;
-                }
-
-                if (!_input.TryEnterListenerRead(out IDisposable lease)) {
-                    await Task.Delay(_pollInterval, _stop.Token).ConfigureAwait(false);
-                    continue;
-                }
-
-                ConsoleKeyInfo? key = null;
-
-                using (lease) {
-                    if (!_input.IsPromptMode &&
-                       TryGetKeyAvailable(out available) &&
-                       available) {
-                        key = Console.ReadKey(intercept: _intercept);
-                    }
-                }
-
-                if (key == null)
-                    continue;
-
-                await _keys.Writer.WriteAsync(key.Value, _stop.Token).ConfigureAwait(false);
-                await DispatchAsync(key.Value, _stop.Token).ConfigureAwait(false);
-            }
-
-            _keys.Writer.TryComplete();
-        } catch (OperationCanceledException) {
-            _keys.Writer.TryComplete();
-        } catch (Exception ex) {
-            _keys.Writer.TryComplete(ex);
-        }
-    }
-
-    private async ValueTask DispatchAsync(
-        ConsoleKeyInfo key,
-        CancellationToken cancellationToken) {
-        Func<ConsoleKeyInfo, CancellationToken, ValueTask>? handlers = KeyPressed;
-
-        if (handlers == null)
-            return;
-
-        foreach (Delegate handlerDelegate in handlers.GetInvocationList()) {
-            Func<ConsoleKeyInfo, CancellationToken, ValueTask> handler =
-                (Func<ConsoleKeyInfo, CancellationToken, ValueTask>)handlerDelegate;
-
-            await handler(key, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private static bool TryGetKeyAvailable(out bool available) {
-        try {
-            available = Console.KeyAvailable;
-            return true;
-        } catch (IOException) {
-            available = false;
-            return false;
-        } catch (InvalidOperationException) {
-            available = false;
-            return false;
-        }
-    }
-
-    public async ValueTask DisposeAsync() {
-        _stop.Cancel();
-
-        if (_pump != null) {
-            try {
-                await _pump.ConfigureAwait(false);
-            } catch (OperationCanceledException) {
-            }
-        }
-
-        _stop.Dispose();
-    }
-}
-
 public sealed class AsyncConsoleLogger : IAsyncDisposable {
     private readonly Channel<ConsoleCommand> _queue;
     private readonly Task _pump;
     private readonly TextWriter _writer;
-    private readonly ConsoleInputCoordinator _input;
     private readonly bool _ansiEnabled;
     private readonly bool _canPinHoistedSections;
     private readonly Timer? _resizeTimer;
@@ -229,10 +36,8 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
         bool? enableAnsi = null,
         bool enableAnsiWhenOutputRedirected = false,
         bool tryEnableWindowsVirtualTerminal = true,
-        int resizePollMilliseconds = 250,
-        ConsoleInputCoordinator? inputCoordinator = null) {
+        int resizePollMilliseconds = 250) {
         _writer = writer ?? Console.Out;
-        _input = inputCoordinator ?? new ConsoleInputCoordinator();
 
         if (tryEnableWindowsVirtualTerminal)
             AnsiConsoleSupport.TryEnableVirtualTerminalProcessing();
@@ -270,8 +75,6 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
 
     public int MaxHoistedHeight { get; set; } = 8;
 
-    public ConsoleInputCoordinator InputCoordinator => _input;
-
     public Task Completion => _pump;
 
     public bool IsCompleted => Volatile.Read(ref _completed) != 0;
@@ -282,6 +85,7 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
         return WriteLine(new AnsiPart(text));
     }
 
+    public bool WriteLine(params object?[] items) => WriteLine(AnsiLine.From(items).Parts);
     public bool WriteLine(params AnsiPart[] parts) {
         if (IsCompleted)
             return false;
@@ -348,6 +152,7 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
             new AnsiLine(text));
     }
 
+    public bool SetHoistedSection(string key, params AnsiPart[] parts) => SetHoistedSection(key, AnsiLine.From(parts));
     public bool SetHoistedSection(string key, params AnsiLine[] lines) {
         if (key == null)
             throw new ArgumentNullException(nameof(key));
@@ -701,20 +506,15 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
 
     private async Task HandlePromptLineAsync(PromptLineCommand command) {
         try {
-            using IDisposable inputLease =
-                await _input.EnterPromptModeAsync().ConfigureAwait(false);
-
             await BeginPromptAsync().ConfigureAwait(false);
 
-            try {
-                await WritePromptCoreAsync(command.PromptParts).ConfigureAwait(false);
+            await WritePromptCoreAsync(command.PromptParts).ConfigureAwait(false);
 
-                string? result = Console.ReadLine();
+            string? result = Console.ReadLine();
 
-                command.Completion.TrySetResult(result);
-            } finally {
-                await EndPromptAsync().ConfigureAwait(false);
-            }
+            await EndPromptAsync().ConfigureAwait(false);
+
+            command.Completion.TrySetResult(result);
         } catch (Exception ex) {
             command.Completion.TrySetException(ex);
         }
@@ -722,46 +522,44 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
 
     private async Task HandlePromptYesNoAsync(PromptYesNoCommand command) {
         try {
-            using IDisposable inputLease =
-                await _input.EnterPromptModeAsync().ConfigureAwait(false);
-
             await BeginPromptAsync().ConfigureAwait(false);
 
-            try {
-                while (true) {
-                    await WritePromptCoreAsync(command.PromptParts).ConfigureAwait(false);
+            while (true) {
+                await WritePromptCoreAsync(command.PromptParts).ConfigureAwait(false);
 
-                    ConsoleKeyInfo response = Console.ReadKey(intercept: true);
+                ConsoleKeyInfo response = Console.ReadKey(intercept: true);
 
-                    if (response.Key == ConsoleKey.Enter) {
-                        await _writer.WriteLineAsync("").ConfigureAwait(false);
+                if (response.Key == ConsoleKey.Enter) {
+                    await _writer.WriteLineAsync("").ConfigureAwait(false);
+                    await EndPromptAsync().ConfigureAwait(false);
 
-                        command.Completion.TrySetResult(command.DefaultYes);
-                        return;
-                    }
-
-                    await _writer.WriteLineAsync(response.KeyChar.ToString()).ConfigureAwait(false);
-
-                    char lower = char.ToLowerInvariant(response.KeyChar);
-
-                    if (lower == 'y' || lower == '1') {
-                        command.Completion.TrySetResult(true);
-                        return;
-                    }
-
-                    if (lower == 'n' || lower == '0') {
-                        command.Completion.TrySetResult(false);
-                        return;
-                    }
-
-                    await WriteLogCoreAsync(
-                        new[]
-                        {
-                            AnsiPart.Warning("Please enter y or n.")
-                        }).ConfigureAwait(false);
+                    command.Completion.TrySetResult(command.DefaultYes);
+                    return;
                 }
-            } finally {
-                await EndPromptAsync().ConfigureAwait(false);
+
+                await _writer.WriteLineAsync(response.KeyChar.ToString()).ConfigureAwait(false);
+
+                char lower = char.ToLowerInvariant(response.KeyChar);
+
+                if (lower == 'y' || lower == '1') {
+                    await EndPromptAsync().ConfigureAwait(false);
+
+                    command.Completion.TrySetResult(true);
+                    return;
+                }
+
+                if (lower == 'n' || lower == '0') {
+                    await EndPromptAsync().ConfigureAwait(false);
+
+                    command.Completion.TrySetResult(false);
+                    return;
+                }
+
+                await WriteLogCoreAsync(
+                    new[]
+                    {
+                        AnsiPart.Warning("Please enter y or n.")
+                    }).ConfigureAwait(false);
             }
         } catch (Exception ex) {
             command.Completion.TrySetException(ex);
@@ -782,69 +580,94 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
     }
 
     private async Task RedrawHoistedSectionsAfterResizeAsync(int width, int height) {
-        // Reset old margins before repositioning and clearing bottom rows.
-        await _writer.WriteAsync(Ansi.ResetScrollRegion).ConfigureAwait(false);
+        await _writer.WriteAsync(Ansi.SaveCursor).ConfigureAwait(false);
 
-        int maxPanelHeight = Math.Min(
-            Math.Max(0, MaxHoistedHeight),
-            Math.Max(0, height - 1));
+        try {
+            await _writer.WriteAsync(Ansi.ResetScrollRegion).ConfigureAwait(false);
 
-        List<AnsiPart[]> physicalLines =
-            maxPanelHeight <= 0
-                ? new List<AnsiPart[]>()
-                : BuildHoistedPhysicalLines(width, maxPanelHeight);
+            int maxPanelHeight = Math.Min(
+                Math.Max(0, MaxHoistedHeight),
+                Math.Max(0, height - 1));
 
-        int newHoistedHeight = physicalLines.Count;
-        int clearHeight = Math.Max(_lastHoistedHeight, newHoistedHeight);
+            List<AnsiPart[]> physicalLines =
+                maxPanelHeight <= 0
+                    ? new List<AnsiPart[]>()
+                    : BuildHoistedPhysicalLines(width, maxPanelHeight);
 
-        await ClearBottomRowsAsync(clearHeight, height).ConfigureAwait(false);
+            int oldHoistedHeight = _lastHoistedHeight;
+            int newHoistedHeight = physicalLines.Count;
 
-        int logBottom = height;
+            await MakeRoomForHoistedGrowthAsync(
+                oldHoistedHeight,
+                newHoistedHeight,
+                height).ConfigureAwait(false);
 
-        if (newHoistedHeight > 0) {
-            int startRow = height - newHoistedHeight + 1;
+            int clearHeight = Math.Max(oldHoistedHeight, newHoistedHeight);
 
-            for (int i = 0; i < physicalLines.Count; i++) {
-                int row = startRow + i;
+            await ClearBottomRowsAsync(clearHeight, height).ConfigureAwait(false);
 
-                await _writer.WriteAsync(Ansi.MoveCursor(row, 1)).ConfigureAwait(false);
-                await _writer.WriteAsync(Ansi.ClearLine).ConfigureAwait(false);
-                await _writer.WriteAsync(Render(physicalLines[i])).ConfigureAwait(false);
+            if (newHoistedHeight > 0) {
+                int startRow = height - newHoistedHeight + 1;
+
+                for (int i = 0; i < physicalLines.Count; i++) {
+                    int row = startRow + i;
+
+                    await _writer.WriteAsync(Ansi.MoveCursor(row, 1)).ConfigureAwait(false);
+                    await _writer.WriteAsync(Ansi.ClearLine).ConfigureAwait(false);
+                    await _writer.WriteAsync(Render(physicalLines[i])).ConfigureAwait(false);
+                }
+
+                int logBottom = Math.Max(1, height - newHoistedHeight);
+
+                await _writer.WriteAsync(Ansi.SetScrollRegion(1, logBottom)).ConfigureAwait(false);
+            } else {
+                await _writer.WriteAsync(Ansi.ResetScrollRegion).ConfigureAwait(false);
             }
 
-            logBottom = Math.Max(1, height - newHoistedHeight);
-
-            await _writer.WriteAsync(Ansi.SetScrollRegion(1, logBottom)).ConfigureAwait(false);
-            await _writer.WriteAsync(Ansi.MoveCursor(logBottom, 1)).ConfigureAwait(false);
-        } else {
-            await _writer.WriteAsync(Ansi.ResetScrollRegion).ConfigureAwait(false);
-            await _writer.WriteAsync(Ansi.MoveCursor(Math.Max(1, height), 1)).ConfigureAwait(false);
+            _lastWindowWidth = width;
+            _lastWindowHeight = height;
+            _lastHoistedHeight = newHoistedHeight;
+            _hoistedDirty = false;
+        } finally {
+            await _writer.WriteAsync(Ansi.RestoreCursor).ConfigureAwait(false);
+            await _writer.FlushAsync().ConfigureAwait(false);
         }
-
-        _lastWindowWidth = width;
-        _lastWindowHeight = height;
-        _lastHoistedHeight = newHoistedHeight;
-        _hoistedDirty = false;
-
-        await _writer.FlushAsync().ConfigureAwait(false);
     }
 
     private async Task BeginPromptAsync() {
         if (!_canPinHoistedSections)
             return;
 
-        _suppressHoistedRendering = true;
+        // Keep the hoisted/status area visible while prompting.
+        _suppressHoistedRendering = false;
 
-        await ClearHoistedAreaAsync(_lastHoistedHeight).ConfigureAwait(false);
+        await EnsureHoistedLayoutAsync().ConfigureAwait(false);
 
-        _lastHoistedHeight = 0;
+        if (_lastHoistedHeight <= 0)
+            return;
 
-        await _writer.WriteAsync(Ansi.ResetScrollRegion).ConfigureAwait(false);
+        if (!TryGetConsoleSize(out int width, out int height))
+            return;
 
-        if (TryGetConsoleSize(out _, out int height)) {
-            await _writer.WriteAsync(Ansi.MoveCursor(Math.Max(1, height), 1)).ConfigureAwait(false);
-            await _writer.WriteAsync(Ansi.ClearLine).ConfigureAwait(false);
-        }
+        int logBottom = Math.Max(1, height - _lastHoistedHeight);
+
+        bool hasSavedCursor = TryGetCursorPosition(out int savedLeft, out int savedTop);
+
+        int restoreRow = hasSavedCursor ? savedTop + 1 : logBottom;
+        int restoreColumn = hasSavedCursor ? savedLeft + 1 : 1;
+
+        // If the cursor somehow ended up inside the hoisted/status area,
+        // move it back into the log/input region.
+        restoreRow = Math.Min(restoreRow, logBottom);
+
+        restoreRow = Math.Clamp(restoreRow, 1, Math.Max(1, height));
+        restoreColumn = Math.Clamp(restoreColumn, 1, Math.Max(1, width));
+
+        // Important:
+        // Setting the scroll region can move the cursor to 1,1 on some terminals.
+        // So we set the region first, then restore the cursor.
+        await _writer.WriteAsync(Ansi.SetScrollRegion(1, logBottom)).ConfigureAwait(false);
+        await _writer.WriteAsync(Ansi.MoveCursor(restoreRow, restoreColumn)).ConfigureAwait(false);
 
         await _writer.FlushAsync().ConfigureAwait(false);
     }
@@ -854,9 +677,11 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
             return;
 
         _suppressHoistedRendering = false;
-        _hoistedDirty = true;
 
-        await RenderHoistedSectionsAsync().ConfigureAwait(false);
+        // The hoisted area was never hidden, so normally there is nothing to restore.
+        // Still re-render if a resize/layout change was queued while the prompt was active.
+        if (_hoistedDirty)
+            await RenderHoistedSectionsAsync().ConfigureAwait(false);
     }
 
     private async Task WriteLogCoreAsync(IReadOnlyList<AnsiPart> parts) {
@@ -920,8 +745,15 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
                 ? new List<AnsiPart[]>()
                 : BuildHoistedPhysicalLines(width, maxPanelHeight);
 
+        int oldHoistedHeight = _lastHoistedHeight;
         int newHoistedHeight = physicalLines.Count;
-        int clearHeight = Math.Max(_lastHoistedHeight, newHoistedHeight);
+
+        await MakeRoomForHoistedGrowthAsync(
+            oldHoistedHeight,
+            newHoistedHeight,
+            height).ConfigureAwait(false);
+
+        int clearHeight = Math.Max(oldHoistedHeight, newHoistedHeight);
 
         await ClearHoistedAreaAsync(clearHeight).ConfigureAwait(false);
 
@@ -949,8 +781,11 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
             int restoreRow = savedTop + 1;
             int restoreColumn = savedLeft + 1;
 
-            if (newHoistedHeight > 0)
-                restoreRow = Math.Min(restoreRow, logBottom);
+            int restoreLogBottom = newHoistedHeight > 0
+                ? Math.Max(1, height - newHoistedHeight)
+                : height;
+
+            restoreRow = Math.Min(restoreRow, restoreLogBottom);
 
             restoreRow = Math.Clamp(restoreRow, 1, Math.Max(1, height));
             restoreColumn = Math.Clamp(restoreColumn, 1, Math.Max(1, width));
@@ -987,6 +822,40 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
         for (int row = startRow; row <= height; row++) {
             await _writer.WriteAsync(Ansi.MoveCursor(row, 1)).ConfigureAwait(false);
             await _writer.WriteAsync(Ansi.ClearLine).ConfigureAwait(false);
+        }
+    }
+
+    private async Task MakeRoomForHoistedGrowthAsync(
+            int oldHoistedHeight,
+            int newHoistedHeight,
+            int windowHeight
+    ) {
+        if (!_canPinHoistedSections)
+            return;
+
+        int growth = newHoistedHeight - oldHoistedHeight;
+
+        if (growth <= 0)
+            return;
+
+        // The old log region included everything above the old hoisted area.
+        // If there was no old hoisted area, the whole visible window was the log region.
+        int oldLogBottom = oldHoistedHeight > 0
+            ? Math.Max(1, windowHeight - oldHoistedHeight)
+            : Math.Max(1, windowHeight);
+
+        await _writer.WriteAsync(Ansi.SaveCursor).ConfigureAwait(false);
+
+        try {
+            // Make the old log region scroll, then emit enough newlines to push
+            // existing log content up out of the rows that are about to become hoisted.
+            await _writer.WriteAsync(Ansi.SetScrollRegion(1, oldLogBottom)).ConfigureAwait(false);
+            await _writer.WriteAsync(Ansi.MoveCursor(oldLogBottom, 1)).ConfigureAwait(false);
+
+            for (int i = 0; i < growth; i++)
+                await _writer.WriteLineAsync("").ConfigureAwait(false);
+        } finally {
+            await _writer.WriteAsync(Ansi.RestoreCursor).ConfigureAwait(false);
         }
     }
 
@@ -1341,6 +1210,9 @@ public static class Ansi {
 
     public const string ClearLine = Escape + "2K";
     public const string ResetScrollRegion = Escape + "r";
+
+    public const string SaveCursor = "\u001b7";
+    public const string RestoreCursor = "\u001b8";
 
     public static string Foreground(Rgb rgb) {
         return $"{Escape}38;2;{rgb.R};{rgb.G};{rgb.B}m";
