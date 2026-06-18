@@ -1,4 +1,20 @@
-# Nura Desktop App
+# Nura Windows
+
+This is a project that contains various resources in reverse engineering Nura devices specifically the Nuraphone's so that they can be used and controlled on Windows without the need to have an Android or IOS device nearby.
+
+https://github.com/user-attachments/assets/b3b590cd-3b8b-4d8f-bac5-d6c3a74d1779
+
+<p align="center">
+  <img
+    width="256"
+    height="256"
+    alt="NuraphonesMinimalWhiteLogo"
+    src="https://github.com/user-attachments/assets/3a85c452-9517-4599-90f7-f5209928ee78"
+    style="background: transparent;"
+  />
+</p>
+
+# Summary
 
 This folder contains four related .NET projects:
 
