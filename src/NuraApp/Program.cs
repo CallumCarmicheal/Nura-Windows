@@ -10,6 +10,7 @@ using NuraLib;
 using NuraLib.Configuration;
 using NuraLib.Devices;
 using NuraLib.Logging;
+using NuraLib.Monitoring;
 
 static class Program {
     private static readonly CancellationTokenSource AppCts = new();
@@ -17,6 +18,7 @@ static class Program {
 
     private static NuraClient? Client;
     private static NuraDevice? SelectedDevice = null;
+    private static bool IsAuthenticated = false;
 
     static async Task Main(string[] args) {
         Console.OutputEncoding = Encoding.UTF8;
@@ -82,213 +84,219 @@ static class Program {
         logger.SetHoistedSection("status", "Checking stored credentials.");
 
         // Check if we are authenticated.
-        var authenticated = client.Auth.HasStoredCredentials && (await client.Auth.HasValidSessionAsync().ConfigureAwait(false));
+        IsAuthenticated = client.Auth.HasStoredCredentials && (await client.Auth.HasValidSessionAsync().ConfigureAwait(false));
 
-        if (authenticated) {
+        if (IsAuthenticated) {
             try {
                 logger.SetHoistedSection("status", "Attempting to resume existing authentication state");
 
                 await client.Auth.ResumeAsync().ConfigureAwait(false);
-                authenticated = await client.Auth.HasValidSessionAsync().ConfigureAwait(false);
+                IsAuthenticated = await client.Auth.HasValidSessionAsync().ConfigureAwait(false);
             } catch (Exception ex) {
-                authenticated = false;
+                IsAuthenticated = false;
 
                 logger.WriteLine(
                     AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
                     AnsiPart.Error("[NuraLib] "),
                     $"Failed to resume previous authentication: {ex.Message}");
             }
-        }
-
-        if (!authenticated) {
-            logger.SetHoistedSection("status", "No existing session or it is now invalid, authenticating...");
-            authenticated = await AttemptLogin(client).ConfigureAwait(false);
-        }
-
-        if (!authenticated) {
-            logger.SetHoistedSection("status", "Not Authenticated with Nura.");
-            logger.WriteLine(
-                AnsiPart.Warning("Not authenticated. "),
-                "We cannot provision devices if they are required.");
         } else {
+            // Ask the user if they wish to login
+            logger.SetHoistedSection("status", "No existing session or it is now invalid, authenticating...");
+            IsAuthenticated = await AttemptLogin(client).ConfigureAwait(false);
+        }
+
+        // Print authentication status
+        if (IsAuthenticated) {
             logger.WriteLine(
                 AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
                 AnsiPart.Success("[Auth] "),
                 NuraGradient.Text("✓ Authenticated with nura."));
-            
+
             logger.SetHoistedSection("status", AnsiPart.Success("✓ Authenticated with nura."));
+        } else {
+            logger.SetHoistedSection("status", "Not Authenticated with Nura.");
+            logger.WriteLine(
+                AnsiPart.Warning("Not authenticated. "),
+                "We cannot provision devices if they are required.");
         }
 
+        // Setup hoist sections
         logger.SetHoistedSection("current device:status", "");
         logger.SetHoistedSection("current device", "");
         logger.SetHoistedSection("status", "Searching for devices...");
         logger.MoveHoistedSectionToBottom("current device");
         logger.MoveHoistedSectionToBottom("status");
 
-        client.Monitoring.DeviceConnected += async (_, args) => {
-            var device = args.Device;
+        // Handler for device connected
+        client.Monitoring.DeviceConnected += NuraDeviceConnectedAsync;
 
-            try {
-                FlashDevicesHoistText(AnsiLine.From("Found new device, retrieving data for ", NuraGradient.Text(device.Info.DisplayName), "."));
+        client.Monitoring.DeviceDisconnected += NuraDeviceDisconnectedAsync;
 
-                if (SelectedDevice == null) {
-                    SelectedDevice = device;
-                    logger.SetHoistedSection("current device", AnsiLine.From("[Keys ←/→ ?] | "
-                        , NuraGradient.Text(device.Info.DisplayName)
-                        , " | Setting up events and hooks."));
-                }
+        await client.Monitoring.StartAsync();
+    }
 
+    private static async void NuraDeviceDisconnectedAsync(object? sender, NuraDeviceConnectionEventArgs e) {
+        var device = e.Device;
+
+        try {
+            if (SelectedDevice == device) {
+                SelectedDevice = null;
+                UpdateSelectedDeviceText();
+            }
+
+            var gradient = NuraGradient.Text(device.Info.DisplayName);
+
+            logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    "[NuraDevice] ", gradient, ": Disconnected.");
+
+            FlashDevicesHoistText(AnsiLine.From("Device disconnected : ", gradient));
+
+            await device.StopMonitoringAsync().ConfigureAwait(false);
+        } catch (Exception ex) {
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.Error("[NuraLib] ERROR : "),
+                $"Device disconnect handler failed ({device.Info.DisplayName}): {ex.Message}.");
+        }
+    }
+
+    private static async void NuraDeviceConnectedAsync(object? sender, NuraDeviceConnectionEventArgs e) {
+        var device = e.Device;
+
+        try {
+            FlashDevicesHoistText(AnsiLine.From("Found new device, retrieving data for ", NuraGradient.Text(device.Info.DisplayName), "."));
+
+            if (SelectedDevice == null) {
+                SelectedDevice = device;
+                logger.SetHoistedSection("current device", AnsiLine.From("[Keys ←/→ ?] | "
+                    , NuraGradient.Text(device.Info.DisplayName)
+                    , " | Setting up events and hooks."));
+            }
+
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.FgHex("[NuraLib] ", 0x8B5CF6),
+                $"Device connected: {device.Info.DisplayName}.");
+
+            device.OperationStatusChanged += (_, op) => {
                 logger.WriteLine(
                     AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    AnsiPart.FgHex("[NuraLib] ", 0x8B5CF6),
-                    $"Device connected: {device.Info.DisplayName}.");
+                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                    $"{device.Info.DisplayName}: {op?.Current?.Kind.ToString() ?? "NullType"} - {op?.Current?.Message ?? "NoMsg"}.");
 
-                device.OperationStatusChanged += (_, op) => {
+                FlashSelectedDeviceStatusText(AnsiLine.From(NuraGradient.Text(device.Info.DisplayName), $" => {op?.Current?.Kind.ToString() ?? "NullType"} - {op?.Current?.Message ?? "NoMsg"}."));
+            };
+
+            device.HeadsetIndicationReceived += (_, data) => {
+                // We received data.
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                    $"{device.Info.DisplayName}: {data.Identifier.ToString()} : {data.Value:X2}.");
+            };
+
+            device.State.AncChanged += (_, data) => {
+                // We received data.
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                    $"{device.Info.DisplayName}: AncEnabledChanged : {data.Current?.ToString() ?? "<null>"}.");
+            };
+
+            device.State.AncEnabledChanged += (_, data) => {
+                // We received data.
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                    $"{device.Info.DisplayName}: AncEnabledChanged : {data.Current?.ToString() ?? "<null>"}.");
+            };
+
+            device.Changed += (_, data) => {
+                // We received data.
+                //logger.WriteLine(
+                //	AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                //	AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                //	$"{device.Info.DisplayName}: Device state changed.");
+            };
+
+            // If the device is not provisioned, we can attempt to provision it.
+            if (device.ProvisioningRequired) {
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                    $"{device.Info.DisplayName}: Device required provisioning - {device.ProvisioningRequirementReason}.");
+
+                if (SelectedDevice == device) {
+                    logger.SetHoistedSection("current device", AnsiLine.From("[Keys ←/→ ?] | "
+                        , NuraGradient.Text(device.Info.DisplayName)
+                        , $" | Device required provisioning - {device.ProvisioningRequirementReason}."));
+                }
+
+                if (IsAuthenticated) {
                     logger.WriteLine(
                         AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
                         AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                        $"{device.Info.DisplayName}: {op?.Current?.Kind.ToString() ?? "NullType"} - {op?.Current?.Message ?? "NoMsg"}.");
+                        $"{device.Info.DisplayName}: Authenticated with Nura, requesting provision to get keys.");
 
-                    FlashSelectedDeviceStatusText(AnsiLine.From(NuraGradient.Text(device.Info.DisplayName), $" => {op?.Current?.Kind.ToString() ?? "NullType"} - {op?.Current?.Message ?? "NoMsg"}."));
-                };
-
-                device.HeadsetIndicationReceived += (_, data) => {
-                    // We received data.
-                    logger.WriteLine(
-                        AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                        AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                        $"{device.Info.DisplayName}: {data.Identifier.ToString()} : {data.Value:X2}.");
-                };
-
-                device.State.AncChanged += (_, data) => {
-                    // We received data.
-                    logger.WriteLine(
-                        AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                        AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                        $"{device.Info.DisplayName}: AncEnabledChanged : {data.Current?.ToString() ?? "<null>"}.");
-                };
-
-                device.State.AncEnabledChanged += (_, data) => {
-                    // We received data.
-                    logger.WriteLine(
-                        AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                        AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                        $"{device.Info.DisplayName}: AncEnabledChanged : {data.Current?.ToString() ?? "<null>"}.");
-                };
-
-                device.Changed += (_, data) => {
-                    // We received data.
-                    //logger.WriteLine(
-                    //	AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    //	AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                    //	$"{device.Info.DisplayName}: Device state changed.");
-                };
-
-                // If the device is not provisioned, we can attempt to provision it.
-                if (device.ProvisioningRequired) {
-                    logger.WriteLine(
-                        AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                        AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                        $"{device.Info.DisplayName}: Device required provisioning - {device.ProvisioningRequirementReason}.");
-
-                    if (SelectedDevice == device) {
-                        logger.SetHoistedSection("current device", AnsiLine.From("[Keys ←/→ ?] | "
-                            , NuraGradient.Text(device.Info.DisplayName)
-                            , $" | Device required provisioning - {device.ProvisioningRequirementReason}."));
-                    }
-
-                    if (authenticated) {
-                        logger.WriteLine(
-                            AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                            AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                            $"{device.Info.DisplayName}: Authenticated with Nura, requesting provision to get keys.");
-
-                        var provisioningResult = await device.EnsureProvisionedAsync();
-                        if (!provisioningResult.Success) {
-                            logger.WriteLine(
-                                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                                AnsiPart.Error("[NuraLib] ERROR : "),
-                                $"{device.Info.DisplayName}: Provisioning failed - {provisioningResult.Error}.");
-                        }
-                    } else {
+                    var provisioningResult = await device.EnsureProvisionedAsync();
+                    if (!provisioningResult.Success) {
                         logger.WriteLine(
                             AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
                             AnsiPart.Error("[NuraLib] ERROR : "),
-                            $"We are unable to use this device ({device.Info.DisplayName}) without first logging into Nura to request its encryption keys.");
-
-                        logger.SetHoistedSection("current device", AnsiLine.From("[Keys ←/→ ?] | "
-                            , NuraGradient.Text(device.Info.DisplayName)
-                            , $" | Unable to talk to device, please login - {device.ProvisioningRequirementReason}."));
-                    }
-                }
-
-                // Start listening for changes if we have the encryption key.
-                if (device.HasPersistentDeviceKey) {
-                    logger.WriteLine(
-                        AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                        AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                        $"{device.Info.DisplayName}: Device key exists, listening for device changes.");
-
-                    // Show the user the device key.
-                    logger.WriteLine(
-                        AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                        AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                        $"{device.Info.DisplayName}: Device key = ",
-                        AnsiPart.Fg(device.DeviceConfig.GetDeviceKeyHex(), 0, 255, 0),
-                        ".");
-
-                    await device.RefreshAsync();          // populates initial cached values
-                    await device.StartMonitoringAsync();  // keeps them updated from indications
-
-                    if (SelectedDevice == device) {
-                        await Task.Delay(1000);
-                        UpdateSelectedDeviceText();
+                            $"{device.Info.DisplayName}: Provisioning failed - {provisioningResult.Error}.");
                     }
                 } else {
                     logger.WriteLine(
                         AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                        AnsiPart.Warning("[NuraDevice] "),
-                        $"{device.Info.DisplayName}: Device key does not exist. Unable to communicate with device.");
-                }
+                        AnsiPart.Error("[NuraLib] ERROR : "),
+                        $"We are unable to use this device ({device.Info.DisplayName}) without first logging into Nura to request its encryption keys.");
 
-                FlashDevicesHoistText(AnsiLine.From("Finished initializing ", NuraGradient.Text(device.Info.DisplayName), "."));
-            } catch (Exception ex) {
+                    logger.SetHoistedSection("current device", AnsiLine.From("[Keys ←/→ ?] | "
+                        , NuraGradient.Text(device.Info.DisplayName)
+                        , $" | Unable to talk to device, please login - {device.ProvisioningRequirementReason}."));
+                }
+            }
+
+            // Start listening for changes if we have the encryption key.
+            if (device.HasPersistentDeviceKey) {
                 logger.WriteLine(
                     AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    AnsiPart.Error("[NuraLib] ERROR : "),
-                    $"Device connection handler failed: {ex.Message}");
+                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                    $"{device.Info.DisplayName}: Device key exists, listening for device changes.");
 
-                FlashDevicesHoistText(AnsiLine.From(AnsiPart.Error("Failed to setup connection for "), NuraGradient.Text(device.Info.DisplayName), "."));
-            }
-        };
+                // Show the user the device key.
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                    $"{device.Info.DisplayName}: Device key = ",
+                    AnsiPart.Fg(device.DeviceConfig.GetDeviceKeyHex(), 0, 255, 0),
+                    ".");
 
-        client.Monitoring.DeviceDisconnected += async (_, args) => {
-            var device = args.Device;
+                await device.RefreshAsync();          // populates initial cached values
+                await device.StartMonitoringAsync();  // keeps them updated from indications
 
-            try {
                 if (SelectedDevice == device) {
-                    SelectedDevice = null;
+                    await Task.Delay(1000);
                     UpdateSelectedDeviceText();
                 }
-
-                var gradient = NuraGradient.Text(device.Info.DisplayName);
-
-                logger.WriteLine(
-                        AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                        "[NuraDevice] ", gradient, ": Disconnected.");
-
-                FlashDevicesHoistText(AnsiLine.From("Device disconnected : ", gradient));
-
-                await device.StopMonitoringAsync().ConfigureAwait(false);
-            } catch (Exception ex) {
+            } else {
                 logger.WriteLine(
                     AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    AnsiPart.Error("[NuraLib] ERROR : "),
-                    $"Device disconnect handler failed ({device.Info.DisplayName}): {ex.Message}.");
+                    AnsiPart.Warning("[NuraDevice] "),
+                    $"{device.Info.DisplayName}: Device key does not exist. Unable to communicate with device.");
             }
-        };
 
-        await client.Monitoring.StartAsync();
+            FlashDevicesHoistText(AnsiLine.From("Finished initializing ", NuraGradient.Text(device.Info.DisplayName), "."));
+        } catch (Exception ex) {
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.Error("[NuraLib] ERROR : "),
+                $"Device connection handler failed: {ex.Message}");
+
+            FlashDevicesHoistText(AnsiLine.From(AnsiPart.Error("Failed to setup connection for "), NuraGradient.Text(device.Info.DisplayName), "."));
+        }
     }
 
     private static async Task<bool> AttemptLogin(NuraClient client) {
@@ -424,6 +432,42 @@ static class Program {
         }
     }
 
+    private static void UpdateSelectedDeviceText() {
+        if (SelectedDevice is null) {
+            logger.SetHoistedSection(
+                "current device",
+                AnsiLine.From("[←/→ select · ? help]  ", AnsiPart.Dim("<no device selected>")));
+            return;
+        }
+
+        var device = SelectedDevice;
+        var segments = new List<object> {
+            AnsiPart.Dim("[←/→ select · ? help]  "),
+            NuraGradient.Text(device.Info.DisplayName),
+            " | "
+        };
+
+        if (device is ConnectedNuraDevice live) {
+            if (live.ProvisioningRequired == true) {
+                segments.Add("  ");
+                segments.Add(AnsiPart.Warning($"provision:{FormatProvisionReason(live.ProvisioningRequirementReason)}"));
+            } else if (!live.HasPersistentDeviceKey) {
+                segments.Add("  ");
+                segments.Add(AnsiPart.Warning("key:missing"));
+            } else {
+                AddValue(segments, "ANC", FormatBool(live.State.AncEnabled));
+                AddValue(segments, "pass", FormatBool(live.State.PassthroughEnabled));
+                AddValue(segments, "imm", FormatImmersion(live.State.ImmersionLevel));
+            }
+        } else {
+            segments.Add(AnsiPart.Error("ERROR - Not ConnectedNuraDevice"));
+        }
+
+        logger.SetHoistedSection("current device", AnsiLine.From(segments.ToArray()));
+    }
+
+#region Hoisted Status Lines
+
     private static readonly AsyncDebouncer devicesStatusFlashDebouncer = new(TimeSpan.FromSeconds(4));
     private static void FlashDevicesHoistText(params AnsiPart[] parts) => FlashDevicesHoistText(AnsiLine.From(parts));
     private static void FlashDevicesHoistText(AnsiLine line) {
@@ -458,39 +502,7 @@ static class Program {
         _  = selectedDeviceTextFlashDebouncer.DebounceAsync(() => UpdateSelectedDeviceText());
     }
 
-    private static void UpdateSelectedDeviceText() {
-        if (SelectedDevice is null) {
-            logger.SetHoistedSection(
-                "current device",
-                AnsiLine.From("[←/→ select · ? help]  ", AnsiPart.Dim("<no device selected>")));
-            return;
-        }
-
-        var device = SelectedDevice;
-        var segments = new List<object> {
-            AnsiPart.Dim("[←/→ select · ? help]  "),
-            NuraGradient.Text(device.Info.DisplayName),
-            " | "
-        };
-
-        if (device is ConnectedNuraDevice live) {
-            if (live.ProvisioningRequired == true) {
-                segments.Add("  ");
-                segments.Add(AnsiPart.Warning($"provision:{FormatProvisionReason(live.ProvisioningRequirementReason)}"));
-            } else if (!live.HasPersistentDeviceKey) {
-                segments.Add("  ");
-                segments.Add(AnsiPart.Warning("key:missing"));
-            } else {
-                AddValue(segments, "ANC", FormatBool(live.State.AncEnabled));
-                AddValue(segments, "pass", FormatBool(live.State.PassthroughEnabled));
-                AddValue(segments, "imm", FormatImmersion(live.State.ImmersionLevel));
-            }
-        } else {
-            segments.Add(AnsiPart.Error("ERROR - Not ConnectedNuraDevice"));
-        }
-
-        logger.SetHoistedSection("current device", AnsiLine.From(segments.ToArray()));
-    }
+#endregion
 
     private static Task<bool> PromptYesNo(string prompt, bool defaultYes) {
         return logger.PromptYesNoAsync(prompt, defaultYes);
