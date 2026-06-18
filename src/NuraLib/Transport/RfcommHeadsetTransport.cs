@@ -77,22 +77,23 @@ internal sealed class RfcommHeadsetTransport : IHeadsetTransport {
         int idleTimeoutMs,
         int maxFrames,
         CancellationToken cancellationToken) {
+        if (idleTimeoutMs < 0) {
+            throw new ArgumentOutOfRangeException(nameof(idleTimeoutMs));
+        }
+
         if (maxFrames <= 0) {
             throw new ArgumentOutOfRangeException(nameof(maxFrames));
         }
 
         var responses = new List<GaiaResponse>(maxFrames);
         while (responses.Count < maxFrames) {
-            using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            idleCts.CancelAfter(TimeSpan.FromMilliseconds(idleTimeoutMs));
-
-            try {
-                var response = await ReadResponseAsync(idleCts.Token);
-                responses.Add(response);
-            } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
+            if (!await WaitForReadableAsync(idleTimeoutMs, cancellationToken)) {
                 _logger.Debug(Source, "Frame collection stopped after idle timeout.");
                 break;
             }
+
+            var response = await ReadResponseAsync(cancellationToken);
+            responses.Add(response);
         }
 
         return responses;
@@ -150,6 +151,30 @@ internal sealed class RfcommHeadsetTransport : IHeadsetTransport {
         }
 
         return output;
+    }
+
+    private async Task<bool> WaitForReadableAsync(int timeoutMs, CancellationToken cancellationToken) {
+        EnsureConnected();
+
+        var deadline = Environment.TickCount64 + timeoutMs;
+
+        while (true) {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (_socket!.Poll(0, SelectMode.SelectRead)) {
+                return true;
+            }
+
+            var remainingMs = deadline - Environment.TickCount64;
+            if (remainingMs <= 0) {
+                return false;
+            }
+
+            await Task.Delay(
+                    TimeSpan.FromMilliseconds(Math.Min(remainingMs, 50)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private void EnsureConnected() {
