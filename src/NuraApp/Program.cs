@@ -1,5 +1,7 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Reflection.Metadata.Ecma335;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 using Microsoft.Win32;
@@ -19,6 +21,11 @@ static class Program {
     private static NuraClient? Client;
     private static NuraDevice? SelectedDevice = null;
     private static bool IsAuthenticated = false;
+    private static string AppSettingsPath = string.Empty;
+    private static NuraAppSettings AppSettings = new();
+    private static readonly JsonSerializerOptions AppSettingsJsonOptions = new() {
+        WriteIndented = true
+    };
 
     static async Task Main(string[] args) {
         Console.OutputEncoding = Encoding.UTF8;
@@ -30,8 +37,26 @@ static class Program {
         };
 
         try {
-            logger.WriteLine("Application starting...");
-            await logger.SetHoistedSectionAndWaitAsync("status", "Loading...");
+
+            // Setup hoist sections
+            /**
+             * current device:status   temporary selected-device action/status flash
+             * current device          selected device identity and active profile
+             * current device:state    selected device state chips
+             * status                  overall app/device discovery status
+             */
+            logger.SetHoistedSection("current device:status", "");
+            logger.SetHoistedSection("current device", "");
+            logger.SetHoistedSection("current device:state", "");
+            logger.SetHoistedSection("status", "Loading...");
+
+            logger.MoveHoistedSectionToBottom("current device:status");
+            logger.MoveHoistedSectionToBottom("current device");
+            logger.MoveHoistedSectionToBottom("current device:state");
+            logger.MoveHoistedSectionToBottom("status");
+
+            // Show we are starting up.
+            await logger.WriteLineAndWaitAsync("Application starting...");
 
             // Run your app here.
             await RunAsync().ConfigureAwait(false);
@@ -46,16 +71,30 @@ static class Program {
             // Do not use AppCts.Token here, because it may already be cancelled.
             await logger.WriteLineAndWaitAsync("Console logger is shutting down.");
 
+            await logger.StopKeyListenerAsync();
+
             // This completes the queue and waits for all pending messages.
             await logger.DisposeAsync();
         }
     }
 
-
     private static async Task RunAsync() {
         var configPath = Path.Combine(
             Environment.CurrentDirectory,
             "nura-config.json");
+
+        AppSettingsPath = Path.Combine(
+            Environment.CurrentDirectory,
+            "app-settings.json");
+
+        AppSettings = LoadOrCreateAppSettings(AppSettingsPath, out var wasAppSettingsCreated);
+
+        if (wasAppSettingsCreated) {
+            var showDebug = await logger.PromptYesNoAsync("Do you want to show debug messages from the headset, this can be toggled at any time by pressing T [y/N] ", false);
+
+            AppSettings.ShowNuraDebugMessages = showDebug;
+            SaveAppSettings(AppSettingsPath, AppSettings);
+        }
 
         var config = NuraConfigStore.LoadOrCreate(configPath);
         var state = new NuraConfigState(config);
@@ -66,18 +105,23 @@ static class Program {
         };
 
         client.OnLog += (_, args) => {
-            if (args.Message != "Frame collection stopped after idle timeout.") {
-                if ((int)args.Level > (int)NuraLogLevel.Debug) {
-                    logger.WriteLine(
-                        AnsiPart.Dim($"[{args.TimestampUtc.ToLocalTime():HH:mm:ss}] "),
-                        AnsiPart.FgHex("[NuraLib] ", 0x8B5CF6),
-                        AnsiPart.FgHex($"{args.Level} ", GetLogLevelColour(args.Level)),
-                        $"{args.Source}: {args.Message}");
-                } else {
-                    // Make it look darker / dimmer because its trace / debug.
-                    logger.WriteLine(
-                        AnsiPart.Dim($"[{args.TimestampUtc.ToLocalTime():HH:mm:ss}] [NuraLib] {args.Level} {args.Source}: {args.Message}"));
-                }
+            // Hide spam
+            if (args.Message == "Frame collection stopped after idle timeout.") return;
+
+            // Hide debug messages
+            if (!AppSettings.ShowNuraDebugMessages && args.Level <= NuraLogLevel.Debug) 
+                return;
+
+            if (args.Level > NuraLogLevel.Debug) {
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{args.TimestampUtc.ToLocalTime():HH:mm:ss}] "),
+                    AnsiPart.FgHex("[NuraLib] ", 0x8B5CF6),
+                    AnsiPart.FgHex($"{args.Level} ", GetLogLevelColour(args.Level)),
+                    $"{args.Source}: {args.Message}");
+            } else {
+                // Make it look darker / dimmer because its trace / debug.
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{args.TimestampUtc.ToLocalTime():HH:mm:ss}] [NuraLib] {args.Level} {args.Source}: {args.Message}"));
             }
         };
 
@@ -121,44 +165,51 @@ static class Program {
                 "We cannot provision devices if they are required.");
         }
 
-        // Setup hoist sections
-        logger.SetHoistedSection("current device:status", "");
-        logger.SetHoistedSection("current device", "");
-        logger.SetHoistedSection("status", "Searching for devices...");
-        logger.MoveHoistedSectionToBottom("current device");
-        logger.MoveHoistedSectionToBottom("status");
-
         // Handler for device connected
         client.Monitoring.DeviceConnected += NuraDeviceConnectedAsync;
-
         client.Monitoring.DeviceDisconnected += NuraDeviceDisconnectedAsync;
+
+        // Handle the user input for controlling devices.
+        logger.KeyPressedAsync += HandleKeyPressAsync;
+        if (!logger.StartKeyListener()) {
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.Warning("[NuraApp] "),
+                "Keyboard hotkeys are disabled because console input is redirected or unavailable.");
+        }
 
         await client.Monitoring.StartAsync();
     }
 
-    private static async void NuraDeviceDisconnectedAsync(object? sender, NuraDeviceConnectionEventArgs e) {
-        var device = e.Device;
+    private static async Task ShutdownClientAsync() {
+        var client = Client;
+        if (client is null) {
+            return;
+        }
 
         try {
-            if (SelectedDevice == device) {
-                SelectedDevice = null;
-                UpdateSelectedDeviceText();
-            }
-
-            var gradient = NuraGradient.Text(device.Info.DisplayName);
-
-            logger.WriteLine(
-                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    "[NuraDevice] ", gradient, ": Disconnected.");
-
-            FlashDevicesHoistText(AnsiLine.From("Device disconnected : ", gradient));
-
-            await device.StopMonitoringAsync().ConfigureAwait(false);
+            await client.Monitoring.StopAsync().ConfigureAwait(false);
         } catch (Exception ex) {
             logger.WriteLine(
                 AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                AnsiPart.Error("[NuraLib] ERROR : "),
-                $"Device disconnect handler failed ({device.Info.DisplayName}): {ex.Message}.");
+                AnsiPart.Warning("[NuraLib] "),
+                $"Failed to stop connection monitoring cleanly: {ex.Message}");
+        }
+
+        var liveDevices = client.Devices.All
+            .OfType<ConnectedNuraDevice>()
+            .Where(device => device.IsMonitoring || device.HasLocalSession)
+            .ToArray();
+
+        foreach (var device in liveDevices) {
+            try {
+                await device.StopMonitoringAsync().ConfigureAwait(false);
+            } catch (Exception ex) {
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    AnsiPart.Warning("[NuraDevice] "),
+                    $"{device.Info.DisplayName}: Failed to stop monitoring cleanly: {ex.Message}");
+            }
         }
     }
 
@@ -215,10 +266,15 @@ static class Program {
 
             device.Changed += (_, data) => {
                 // We received data.
-                //logger.WriteLine(
-                //	AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                //	AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                //	$"{device.Info.DisplayName}: Device state changed.");
+                // logger.WriteLine(
+                //     AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                //     AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+                //     $"{device.Info.DisplayName}: Device state changed.");
+
+                // Update our current status
+                if (SelectedDevice == e.Device) {
+                    UpdateSelectedDeviceText();
+                }
             };
 
             // If the device is not provisioned, we can attempt to provision it.
@@ -296,6 +352,32 @@ static class Program {
                 $"Device connection handler failed: {ex.Message}");
 
             FlashDevicesHoistText(AnsiLine.From(AnsiPart.Error("Failed to setup connection for "), NuraGradient.Text(device.Info.DisplayName), "."));
+        }
+    }
+
+    private static async void NuraDeviceDisconnectedAsync(object? sender, NuraDeviceConnectionEventArgs e) {
+        var device = e.Device;
+
+        try {
+            if (SelectedDevice == device) {
+                SelectedDevice = null;
+                UpdateSelectedDeviceText();
+            }
+
+            var gradient = NuraGradient.Text(device.Info.DisplayName);
+
+            logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    "[NuraDevice] ", gradient, ": Disconnected.");
+
+            FlashDevicesHoistText(AnsiLine.From("Device disconnected : ", gradient));
+
+            await device.StopMonitoringAsync().ConfigureAwait(false);
+        } catch (Exception ex) {
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.Error("[NuraLib] ERROR : "),
+                $"Device disconnect handler failed ({device.Info.DisplayName}): {ex.Message}.");
         }
     }
 
@@ -400,71 +482,388 @@ static class Program {
         return await client.Auth.HasValidSessionAsync();
     }
 
-    private static async Task ShutdownClientAsync() {
-        var client = Client;
-        if (client is null) {
-            return;
-        }
-
-        try {
-            await client.Monitoring.StopAsync().ConfigureAwait(false);
-        } catch (Exception ex) {
-            logger.WriteLine(
-                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                AnsiPart.Warning("[NuraLib] "),
-                $"Failed to stop connection monitoring cleanly: {ex.Message}");
-        }
-
-        var liveDevices = client.Devices.All
-            .OfType<ConnectedNuraDevice>()
-            .Where(device => device.IsMonitoring || device.HasLocalSession)
-            .ToArray();
-
-        foreach (var device in liveDevices) {
-            try {
-                await device.StopMonitoringAsync().ConfigureAwait(false);
-            } catch (Exception ex) {
-                logger.WriteLine(
-                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    AnsiPart.Warning("[NuraDevice] "),
-                    $"{device.Info.DisplayName}: Failed to stop monitoring cleanly: {ex.Message}");
-            }
-        }
-    }
-
     private static void UpdateSelectedDeviceText() {
         if (SelectedDevice is null) {
             logger.SetHoistedSection(
                 "current device",
                 AnsiLine.From("[←/→ select · ? help]  ", AnsiPart.Dim("<no device selected>")));
+            logger.SetHoistedSection("current device:state", "");
             return;
         }
 
         var device = SelectedDevice;
-        var segments = new List<object> {
-            AnsiPart.Dim("[←/→ select · ? help]  "),
+        var titleSegments = new List<object> {
+            AnsiPart.Dim(BuildSelectedDeviceHotkeyHint(device)),
             NuraGradient.Text(device.Info.DisplayName),
-            " | "
+            AnsiPart.FgHex("  ", 0x64748B)
         };
+        var stateSegments = new List<object>();
 
         if (device is ConnectedNuraDevice live) {
             if (live.ProvisioningRequired == true) {
-                segments.Add("  ");
-                segments.Add(AnsiPart.Warning($"provision:{FormatProvisionReason(live.ProvisioningRequirementReason)}"));
+                AddChip(stateSegments, "provision", FormatProvisionReason(live.ProvisioningRequirementReason), 0xF59E0B);
             } else if (!live.HasPersistentDeviceKey) {
-                segments.Add("  ");
-                segments.Add(AnsiPart.Warning("key:missing"));
+                AddChip(stateSegments, "key", "missing", 0xF59E0B);
             } else {
-                AddValue(segments, "ANC", FormatBool(live.State.AncEnabled));
-                AddValue(segments, "pass", FormatBool(live.State.PassthroughEnabled));
-                AddValue(segments, "imm", FormatImmersion(live.State.ImmersionLevel));
+                AddChip(titleSegments, "profile", FormatProfile(live), 0xA78BFA);
+
+                AddBoolChip(stateSegments, "ANC", live.State.AncEnabled, 0x22C55E, addPrefix: false);
+                AddBoolChip(stateSegments, "pass", live.State.PassthroughEnabled, 0x06B6D4);
+                AddChip(stateSegments, "imm", FormatImmersion(live.State.EffectiveImmersionLevel ?? live.State.ImmersionLevel), 0xF97316);
+                AddChip(stateSegments, "mode", FormatPersonalisation(live.State.PersonalisationMode), 0xEC4899);
+                AddBoolChip(stateSegments, "spatial", live.State.SpatialEnabled, 0x38BDF8);
+                AddChip(stateSegments, "enc-key", "ok", 0x22C55E);
+                AddBoolChip(stateSegments, "local", live.HasLocalSession, 0x84CC16);
+                AddBoolChip(stateSegments, "mon", live.IsMonitoring, 0x84CC16);
             }
+
+            AddChip(stateSegments, "fw", live.Info.FirmwareVersion > 0 ? live.Info.FirmwareVersion.ToString() : null, 0xA3E635);
         } else {
-            segments.Add(AnsiPart.Error("ERROR - Not ConnectedNuraDevice"));
+            stateSegments.Add(AnsiPart.Error("ERROR - Not ConnectedNuraDevice"));
         }
 
-        logger.SetHoistedSection("current device", AnsiLine.From(segments.ToArray()));
+        logger.SetHoistedSection("current device", AnsiLine.From(titleSegments.ToArray()));
+        logger.SetHoistedSection("current device:state", AnsiLine.From(stateSegments.ToArray()));
     }
+
+#region Current Device Actions / Keybindings
+
+    private static async ValueTask HandleKeyPressAsync(ConsoleKeyInfo key, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (key.Key is ConsoleKey.LeftArrow or ConsoleKey.RightArrow) {
+            SelectAdjacentDevice(key.Key == ConsoleKey.RightArrow ? 1 : -1);
+            return;
+        }
+
+        switch (key.Key) {
+            case ConsoleKey.UpArrow:
+            case ConsoleKey.Add:
+            case ConsoleKey.OemPlus:
+                await AdjustSelectedImmersionAsync(1, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.DownArrow:
+            case ConsoleKey.Subtract:
+            case ConsoleKey.OemMinus:
+                await AdjustSelectedImmersionAsync(-1, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.A:
+                await ToggleSelectedAncAsync(cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.P:
+                await ToggleSelectedPassthroughAsync(cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.N:
+                await ToggleSelectedPersonalisationAsync(cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.S:
+                await ToggleSelectedSpatialAsync(cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.R:
+                await RefreshSelectedDeviceAsync(cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.T:
+                ToggleNuraDebugMessages();
+                return;
+
+            case ConsoleKey.D1:
+            case ConsoleKey.NumPad1:
+                await SelectProfileAsync(0, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.D2:
+            case ConsoleKey.NumPad2:
+                await SelectProfileAsync(1, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.D3:
+            case ConsoleKey.NumPad3:
+                await SelectProfileAsync(2, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ConsoleKey.H:
+                PrintHotkeyHelp();
+                return;
+
+            case ConsoleKey.Escape:
+            case ConsoleKey.Q:
+                logger.WriteLine(
+                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                    AnsiPart.Warning("[NuraApp] "),
+                    "Exit requested.");
+                Exit();
+                return;
+        }
+
+        if (key.KeyChar == '?') {
+            PrintHotkeyHelp();
+        }
+    }
+
+
+    private static void SelectAdjacentDevice(int direction) {
+        var connectedDevices = Client?.Devices.Connected
+            .Where(device => device.IsConnected)
+            .ToArray() ?? [];
+
+        if (connectedDevices.Length == 0) {
+            SelectedDevice = null;
+            UpdateSelectedDeviceText();
+            FlashSelectedDeviceStatusText(AnsiPart.Warning("No connected Nura devices available."));
+            return;
+        }
+
+        var currentIndex = Array.FindIndex(
+            connectedDevices,
+            device => IsSameDevice(device, SelectedDevice));
+
+        var nextIndex = currentIndex < 0
+            ? 0
+            : (currentIndex + direction + connectedDevices.Length) % connectedDevices.Length;
+
+        SelectedDevice = connectedDevices[nextIndex];
+        UpdateSelectedDeviceText();
+
+        FlashSelectedDeviceStatusText(
+            AnsiLine.From(
+                AnsiPart.Dim($"selected {nextIndex + 1}/{connectedDevices.Length}: "),
+                NuraGradient.Text(SelectedDevice.Info.DisplayName)));
+    }
+
+    private static bool IsSameDevice(NuraDevice candidate, NuraDevice? selected) {
+        if (selected is null) {
+            return false;
+        }
+
+        if (ReferenceEquals(candidate, selected)) {
+            return true;
+        }
+
+        return string.Equals(candidate.Info.Serial, selected.Info.Serial, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(candidate.Info.DeviceAddress, selected.Info.DeviceAddress, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ConnectedNuraDevice? GetSelectedConnectedDevice() {
+        if (SelectedDevice is not ConnectedNuraDevice selected || !selected.IsConnected) {
+            return null;
+        }
+
+        return Client?.Devices.Connected.FirstOrDefault(device => IsSameDevice(device, selected));
+    }
+
+    private static async Task RunSelectedDeviceActionAsync(
+        string actionName,
+        Func<ConnectedNuraDevice, CancellationToken, Task> action,
+        CancellationToken cancellationToken
+    ) {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var device = GetSelectedConnectedDevice();
+        if (device is null) {
+            FlashSelectedDeviceStatusText(AnsiPart.Warning("No connected device selected."));
+            return;
+        }
+
+        if (!device.HasPersistentDeviceKey) {
+            FlashSelectedDeviceStatusText(
+                AnsiLine.From(
+                    NuraGradient.Text(device.Info.DisplayName),
+                    AnsiPart.Warning(": missing device key.")));
+            return;
+        }
+
+        try {
+            FlashSelectedDeviceStatusText(
+                AnsiLine.From(
+                    NuraGradient.Text(device.Info.DisplayName),
+                    AnsiPart.Dim($": {actionName}...")));
+
+            await action(device, cancellationToken).ConfigureAwait(false);
+
+            SelectedDevice = device;
+            UpdateSelectedDeviceText();
+        } catch (NotSupportedException ex) {
+            FlashSelectedDeviceStatusText(AnsiLine.From(AnsiPart.Warning($"{actionName}: "), ex.Message));
+        } catch (InvalidOperationException ex) {
+            FlashSelectedDeviceStatusText(AnsiLine.From(AnsiPart.Warning($"{actionName}: "), ex.Message));
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (Exception ex) {
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.Error("[NuraApp] "),
+                $"{actionName} failed for {device.Info.DisplayName}: {ex.Message}");
+
+            FlashSelectedDeviceStatusText(AnsiLine.From(AnsiPart.Error($"{actionName} failed: "), ex.Message));
+        }
+    }
+
+    private static Task RefreshSelectedDeviceAsync(CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            "refresh",
+            async (device, ct) => {
+                await device.RefreshAsync(ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        NuraGradient.Text(device.Info.DisplayName),
+                        AnsiPart.Success(": refreshed.")));
+            },
+            cancellationToken);
+    }
+
+    private static Task ToggleSelectedAncAsync(CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            "toggle ANC",
+            async (device, ct) => {
+                var current = device.State.AncEnabled ?? await device.State.RetrieveAncEnabledAsync(ct).ConfigureAwait(false) ?? false;
+                var next = !current;
+                await device.State.SetAncEnabledAsync(next, ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("ANC "),
+                        FormatBool(next)));
+            },
+            cancellationToken);
+    }
+
+    private static Task ToggleSelectedPassthroughAsync(CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            "toggle passthrough",
+            async (device, ct) => {
+                var current = device.State.PassthroughEnabled ?? await device.State.RetrievePassthroughEnabledAsync(ct).ConfigureAwait(false) ?? false;
+                var next = !current;
+                await device.State.SetPassthroughEnabledAsync(next, ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("passthrough "),
+                        FormatBool(next)));
+            },
+            cancellationToken);
+    }
+
+    private static Task ToggleSelectedPersonalisationAsync(CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            "toggle personalisation",
+            async (device, ct) => {
+                var current = device.State.PersonalisationMode ??
+                              await device.State.RetrievePersonalisationModeAsync(ct).ConfigureAwait(false) ??
+                              NuraPersonalisationMode.Neutral;
+                var next = current == NuraPersonalisationMode.Personalised
+                    ? NuraPersonalisationMode.Neutral
+                    : NuraPersonalisationMode.Personalised;
+                await device.State.SetPersonalisationModeAsync(next, ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("personalisation "),
+                        next == NuraPersonalisationMode.Personalised ? "on" : "neutral"));
+            },
+            cancellationToken);
+    }
+
+    private static Task ToggleSelectedSpatialAsync(CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            "toggle spatial",
+            async (device, ct) => {
+                var current = device.State.SpatialEnabled ?? await device.State.RetrieveSpatialEnabledAsync(ct).ConfigureAwait(false) ?? false;
+                var next = !current;
+                await device.State.SetSpatialEnabledAsync(next, ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("spatial "),
+                        FormatBool(next)));
+            },
+            cancellationToken);
+    }
+
+    private static Task AdjustSelectedImmersionAsync(int delta, CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            delta > 0 ? "immersion up" : "immersion down",
+            async (device, ct) => {
+                var current = device.State.ImmersionLevel ??
+                              await device.State.RetrieveImmersionLevelAsync(ct).ConfigureAwait(false) ??
+                              device.Info.DefaultImmersionLevel;
+                var nextValue = Math.Clamp((int)current + delta, (int)NuraImmersionLevel.Negative2, (int)NuraImmersionLevel.Positive4);
+                var next = (NuraImmersionLevel)nextValue;
+
+                if (next == current) {
+                    FlashSelectedDeviceStatusText(
+                        AnsiLine.From(
+                            AnsiPart.Dim("immersion already "),
+                            FormatImmersion(current)));
+                    return;
+                }
+
+                await device.State.SetImmersionLevelAsync(next, ct).ConfigureAwait(false);
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("immersion "),
+                        FormatImmersion(next)));
+            },
+            cancellationToken);
+    }
+
+    private static Task SelectProfileAsync(int profileId, CancellationToken cancellationToken) {
+        return RunSelectedDeviceActionAsync(
+            $"select profile {profileId + 1}",
+            async (device, ct) => {
+                await device.Profiles.SetProfileIdAsync(profileId, ct).ConfigureAwait(false);
+
+                var profileName = device.Profiles.Names.TryGetValue(profileId, out var name) && !string.IsNullOrWhiteSpace(name)
+                    ? name
+                    : $"profile {profileId + 1}";
+
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        AnsiPart.Dim("selected "),
+                        profileName));
+            },
+            cancellationToken);
+    }
+
+    private static void ToggleNuraDebugMessages() {
+        AppSettings.ShowNuraDebugMessages = !AppSettings.ShowNuraDebugMessages;
+        SaveAppSettings(AppSettingsPath, AppSettings);
+
+        var stateText = AppSettings.ShowNuraDebugMessages ? "shown" : "hidden";
+        logger.WriteLine(
+            AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+            AnsiPart.FgHex("[NuraApp] ", 0x06B6D4),
+            $"Nura debug/trace messages are now {stateText}.");
+        FlashSelectedDeviceStatusText(
+            AnsiLine.From(
+                AnsiPart.Dim("Nura debug/trace messages "),
+                AppSettings.ShowNuraDebugMessages
+                    ? AnsiPart.Success("shown")
+                    : AnsiPart.Warning("hidden")));
+    }
+
+    private static void PrintHotkeyHelp() {
+        logger.WriteLine(
+            AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+            AnsiPart.FgHex("[NuraApp] ", 0x06B6D4),
+            "Hotkeys:");
+        logger.WriteLine("  ←/→ select device");
+        logger.WriteLine("  ↑/↓ or +/- immersion up/down");
+        logger.WriteLine("  a toggle ANC");
+        logger.WriteLine("  p toggle passthrough/social mode");
+        logger.WriteLine("  n toggle personalised/neutral");
+        logger.WriteLine("  s toggle spatial, when supported");
+        logger.WriteLine("  1/2/3 select profile slot");
+        logger.WriteLine("  r refresh selected device");
+        logger.WriteLine("  t toggle Nura debug/trace logging");
+        logger.WriteLine("  h or ? show help");
+        logger.WriteLine("  q or Esc exit");
+    }
+
+
+#endregion
 
 #region Hoisted Status Lines
 
@@ -504,6 +903,8 @@ static class Program {
 
 #endregion
 
+// Helper methods
+
     private static Task<bool> PromptYesNo(string prompt, bool defaultYes) {
         return logger.PromptYesNoAsync(prompt, defaultYes);
     }
@@ -520,13 +921,63 @@ static class Program {
         };
     }
 
-    static void AddValue(List<object> segments, string label, string? value) {
+    private static string BuildSelectedDeviceHotkeyHint(NuraDevice selectedDevice) {
+        var connectedDevices = Client?.Devices.Connected
+            .Where(device => device.IsConnected)
+            .ToArray() ?? [];
+        var currentIndex = Array.FindIndex(
+            connectedDevices,
+            device => IsSameDevice(device, selectedDevice));
+
+        var hasPrevious = connectedDevices.Length > 1 && currentIndex > 0;
+        var hasNext = connectedDevices.Length > 1 && currentIndex >= 0 && currentIndex < connectedDevices.Length - 1;
+        var selectHint = (hasPrevious, hasNext) switch {
+            (true, true) => "←/→ dev",
+            (true, false) => "← dev",
+            (false, true) => "→ dev",
+            _ => null
+        };
+
+        var parts = new List<string>();
+        if (selectHint is not null) {
+            parts.Add(selectHint);
+        }
+
+        parts.Add("↑/↓ imm");
+        parts.Add("a ANC");
+        parts.Add("p pass");
+        parts.Add("n mode");
+        parts.Add("r refresh");
+        parts.Add("t trace");
+        parts.Add("h help");
+
+        return $"[{string.Join(" · ", parts)}]  ";
+    }
+
+    static void AddChip(List<object> segments, string label, string? value, int valueColour, bool addPrefix = true) {
         if (string.IsNullOrWhiteSpace(value))
             return;
 
-        segments.Add("  ");
-        segments.Add(AnsiPart.Dim($"{label}:"));
-        segments.Add(value);
+        if (addPrefix)
+            segments.Add(AnsiPart.FgHex(" / ", 0x64748B));
+
+        segments.Add(AnsiPart.FgHex(label, 0xCBD5E1));
+
+        //segments.Add(AnsiPart.FgHex(":", 0x64748B));
+        segments.Add(" ");
+        segments.Add(AnsiPart.FgHex(value, valueColour));
+    }
+
+    static void AddBoolChip(List<object> segments, string label, bool? value, int onColour, bool addPrefix = true) {
+        if (value is null)
+            return;
+
+        AddChip(
+            segments,
+            label,
+            value.Value ? "on" : "off",
+            value.Value ? onColour : 0x94A3B8,
+            addPrefix);
     }
 
     static string? FormatBool(bool? value) =>
@@ -542,6 +993,27 @@ static class Program {
             .Replace("Negative", "-", StringComparison.Ordinal)
             .Replace("Neutral", "0", StringComparison.Ordinal);
 
+    static string? FormatPersonalisation(NuraPersonalisationMode? mode) =>
+        mode switch {
+            NuraPersonalisationMode.Personalised => "personalized",
+            NuraPersonalisationMode.Neutral => "neutral",
+            null => null,
+            _ => mode.ToString()
+        };
+
+    static string? FormatProfile(ConnectedNuraDevice device) {
+        if (device.Profiles.ProfileId is not { } profileId) {
+            return null;
+        }
+
+        var displayProfileId = profileId + 1;
+        if (device.Profiles.Names.TryGetValue(profileId, out var name) && !string.IsNullOrWhiteSpace(name)) {
+            return $"({displayProfileId}) {name}";
+        }
+
+        return displayProfileId.ToString();
+    }
+
     static string FormatProvisionReason(NuraProvisioningRequirementReason reason) =>
         reason switch {
             NuraProvisioningRequirementReason.MissingDeviceKey => "missing-key",
@@ -549,8 +1021,48 @@ static class Program {
             _ => "required"
         };
 
+    private static NuraAppSettings LoadOrCreateAppSettings(string path, out bool wasCreated) {
+        try {
+            if (File.Exists(path)) {
+                var json = File.ReadAllText(path);
+                var settings = JsonSerializer.Deserialize<NuraAppSettings>(json, AppSettingsJsonOptions);
+                if (settings is not null) {
+                    wasCreated = false;
+                    return settings;
+                }
+            }
+        } catch (Exception ex) {
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.Warning("[NuraApp] "),
+                $"Failed to read app settings, recreating defaults: {ex.Message}");
+        }
+
+        var defaultSettings = new NuraAppSettings();
+        SaveAppSettings(path, defaultSettings);
+        wasCreated = true;
+        return defaultSettings;
+    }
+
+    private static void SaveAppSettings(string path, NuraAppSettings settings) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory)) {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(path, JsonSerializer.Serialize(settings, AppSettingsJsonOptions));
+    }
+
     public static void Exit() => AppCts.Cancel();
     public static async Task ExitAsync() => await AppCts.CancelAsync();
+}
+
+public sealed class NuraAppSettings {
+    public bool ShowNuraDebugMessages { get; set; } = false;
 }
 
 public static class NuraGradient {

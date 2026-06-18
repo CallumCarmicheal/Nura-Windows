@@ -686,7 +686,6 @@ public sealed class AsyncConsoleLogger : IAsyncDisposable {
                     continue;
 
                 DispatchKeyPressed(key.Value);
-
                 await DispatchKeyPressedAsync(key.Value, cancellationToken).ConfigureAwait(false);
             }
         } catch (OperationCanceledException) {
@@ -1379,7 +1378,7 @@ public readonly record struct AnsiPart(string Text, AnsiStyle Style = default) {
         return new AnsiPart(
             text,
             new AnsiStyle(
-                Foreground: Rgb.FromHex(0x9CA3AF),
+                Foreground: Rgb.FromHex(0xCBD5E1),
                 Dim: true));
     }
 

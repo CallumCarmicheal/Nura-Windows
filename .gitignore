@@ -3,6 +3,7 @@
 .dotnet_home/
 .dotnet/
 global.json
+app-settings.json
 
 # Ignore binaries.
 bin/
