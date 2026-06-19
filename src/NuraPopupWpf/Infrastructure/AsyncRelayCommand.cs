@@ -5,28 +5,37 @@ namespace NuraPopupWpf.Infrastructure;
 public sealed class AsyncRelayCommand : ICommand {
     private readonly Func<object?, CancellationToken, Task> _execute;
     private readonly Predicate<object?>? _canExecute;
-    private bool _isExecuting;
+    private readonly bool _allowConcurrentExecutions;
+    private int _executionCount;
 
-    public AsyncRelayCommand(Func<object?, CancellationToken, Task> execute, Predicate<object?>? canExecute = null) {
+    public AsyncRelayCommand(
+        Func<object?, CancellationToken, Task> execute,
+        Predicate<object?>? canExecute = null,
+        bool allowConcurrentExecutions = false
+    ) {
         _execute = execute ?? throw new ArgumentNullException(nameof(execute));
         _canExecute = canExecute;
+        _allowConcurrentExecutions = allowConcurrentExecutions;
     }
 
     public event EventHandler? CanExecuteChanged;
 
     public bool IsExecuting {
-        get => _isExecuting;
+        get => _executionCount > 0;
         private set {
-            if (_isExecuting == value) {
+            var nextCount = value ? _executionCount + 1 : Math.Max(0, _executionCount - 1);
+            if (_executionCount == nextCount) {
                 return;
             }
 
-            _isExecuting = value;
+            _executionCount = nextCount;
             RaiseCanExecuteChanged();
         }
     }
 
-    public bool CanExecute(object? parameter) => !IsExecuting && (_canExecute?.Invoke(parameter) ?? true);
+    public bool CanExecute(object? parameter) =>
+        (_allowConcurrentExecutions || !IsExecuting) &&
+        (_canExecute?.Invoke(parameter) ?? true);
 
     public async void Execute(object? parameter) {
         if (!CanExecute(parameter)) {

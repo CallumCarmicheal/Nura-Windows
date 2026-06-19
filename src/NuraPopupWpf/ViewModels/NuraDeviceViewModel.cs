@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -24,6 +25,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private bool _hasLocalSession;
     private bool _isMonitoring;
     private bool _requiresProvisioning;
+    private ConnectedNuraDevice? _subscribedLiveDevice;
     private string? _lastAutoSetupFailureKey;
     private string _provisionDisabledReason = string.Empty;
     private string _operationStatusText = string.Empty;
@@ -31,6 +33,8 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private StatusTone _operationStatusTone = StatusTone.Neutral;
     private bool _isOperationStatusVisible;
     private CancellationTokenSource? _operationStatusResetCts;
+    private string? _lastDebugStatusText;
+    private StatusTone? _lastDebugStatusTone;
 
     private NuraDeviceViewModel(
         string id,
@@ -135,7 +139,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         }
     }
 
-    public bool CanInteract => IsConnected && !IsBusy;
+    public bool CanInteract => IsConnected;
 
     public bool IsAutoSetupInProgress {
         get => _isAutoSetupInProgress;
@@ -198,18 +202,23 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         private set => SetProperty(ref _operationStageCode, value);
     }
 
-    public string DisplayStatusText => _isOperationStatusVisible
+    private bool HasOperationError => _operationStatusTone == StatusTone.Error &&
+                                      !string.IsNullOrWhiteSpace(OperationStatusText);
+
+    public string DisplayStatusText => _isOperationStatusVisible || HasOperationError
         ? OperationStatusText
         : ReadinessStatusText;
 
-    public StatusTone DisplayStatusTone => _isOperationStatusVisible
+    public StatusTone DisplayStatusTone => _isOperationStatusVisible || HasOperationError
         ? _operationStatusTone
         : StatusTone.Neutral;
 
+    // The shell status strip should not cover the visualiser with routine readiness text.
+    public bool IsDisplayStatusVisible => _isOperationStatusVisible || HasOperationError;
+
     public bool CanChangeImmersionControl =>
         !IsLive || (LiveDevice is not null &&
-                    LiveDevice.Info.Supports(NuraAudioCapabilities.Immersion) &&
-                    LiveDevice.Info.DeviceType != NuraDeviceType.Nuraphone);
+                    LiveDevice.Info.Supports(NuraAudioCapabilities.Immersion));
 
     public bool CanUseLocalCommands =>
         !IsLive || (LiveDevice is not null &&
@@ -217,7 +226,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
                     LiveDevice.HasPersistentDeviceKey);
 
     public bool CanUseFeatureControls =>
-        !IsLive || (CanUseLocalCommands && HasLocalSession && !IsBusy && !RequiresProvisioning);
+        !IsLive || (CanUseLocalCommands && HasLocalSession && !RequiresProvisioning);
 
     public string ReadinessStatusText {
         get {
@@ -309,11 +318,13 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
 
     public override void AttachLiveDevice(ConnectedNuraDevice? liveDevice) {
         if (ReferenceEquals(LiveDevice, liveDevice)) {
+            EnsureLiveDeviceSubscription(liveDevice);
             return;
         }
 
-        if (LiveDevice is not null) {
-            UnsubscribeLiveDevice(LiveDevice);
+        if (_subscribedLiveDevice is not null) {
+            UnsubscribeLiveDevice(_subscribedLiveDevice);
+            _subscribedLiveDevice = null;
         }
 
         CancelOperationStatusReset();
@@ -322,7 +333,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         base.AttachLiveDevice(liveDevice);
 
         if (liveDevice is not null) {
-            SubscribeLiveDevice(liveDevice);
+            EnsureLiveDeviceSubscription(liveDevice);
             if (liveDevice.OperationStatus is { } operationStatus) {
                 ApplyOperationStatus(operationStatus);
                 PresentOperationStatus(operationStatus);
@@ -370,13 +381,6 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
 
                 if (refreshAfterConnect) {
                     await LiveDevice.RefreshAsync(ct);
-
-                    if (LiveDevice.Info.Supports(NuraAudioCapabilities.VisualisationData)) {
-                        await LiveDevice.Profiles.RefreshVisualisationsAsync(
-                            DefaultProfileSlotCount,
-                            includeOnlineMetadata: _connectToNura && _hasAuthenticatedWithNura,
-                            cancellationToken: ct);
-                    }
                 }
 
                 await LiveDevice.StartMonitoringAsync(ct);
@@ -445,12 +449,6 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
                 }
 
                 await LiveDevice.RefreshAsync(ct);
-                if (LiveDevice.Info.Supports(NuraAudioCapabilities.VisualisationData)) {
-                    await LiveDevice.Profiles.RefreshVisualisationsAsync(
-                        DefaultProfileSlotCount,
-                        includeOnlineMetadata: _connectToNura && _hasAuthenticatedWithNura,
-                        cancellationToken: ct);
-                }
 
                 ApplyFromLiveDevice();
             },
@@ -649,8 +647,9 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
 
     public ValueTask DisposeAsync() {
         CancelOperationStatusReset();
-        if (LiveDevice is not null) {
-            UnsubscribeLiveDevice(LiveDevice);
+        if (_subscribedLiveDevice is not null) {
+            UnsubscribeLiveDevice(_subscribedLiveDevice);
+            _subscribedLiveDevice = null;
         }
 
         _operationGate.Dispose();
@@ -702,6 +701,19 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private void SubscribeLiveDevice(ConnectedNuraDevice liveDevice) {
         liveDevice.Changed += OnLiveDeviceEvent;
         liveDevice.OperationStatusChanged += OnLiveDeviceOperationStatusChanged;
+    }
+
+    private void EnsureLiveDeviceSubscription(ConnectedNuraDevice? liveDevice) {
+        if (liveDevice is null || ReferenceEquals(_subscribedLiveDevice, liveDevice)) {
+            return;
+        }
+
+        if (_subscribedLiveDevice is not null) {
+            UnsubscribeLiveDevice(_subscribedLiveDevice);
+        }
+
+        SubscribeLiveDevice(liveDevice);
+        _subscribedLiveDevice = liveDevice;
     }
 
     private void UnsubscribeLiveDevice(ConnectedNuraDevice liveDevice) {
@@ -838,8 +850,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private void PresentTransientOperationStatus(StatusTone tone) {
         _operationStatusTone = tone;
         _isOperationStatusVisible = true;
-        OnPropertyChanged(nameof(DisplayStatusText));
-        OnPropertyChanged(nameof(DisplayStatusTone));
+        PublishDisplayStatusChanged();
 
         CancelOperationStatusReset();
         var cancellation = new CancellationTokenSource();
@@ -857,8 +868,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
 
                 _operationStatusResetCts = null;
                 _isOperationStatusVisible = false;
-                OnPropertyChanged(nameof(DisplayStatusText));
-                OnPropertyChanged(nameof(DisplayStatusTone));
+                PublishDisplayStatusChanged();
             });
         } catch (OperationCanceledException) when (cancellation.IsCancellationRequested) {
         }
@@ -878,9 +888,25 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private void RaiseReadinessStatusChanged() {
         OnPropertyChanged(nameof(ReadinessStatusText));
         if (!_isOperationStatusVisible) {
-            OnPropertyChanged(nameof(DisplayStatusText));
-            OnPropertyChanged(nameof(DisplayStatusTone));
+            PublishDisplayStatusChanged();
         }
+    }
+
+    private void PublishDisplayStatusChanged() {
+        OnPropertyChanged(nameof(DisplayStatusText));
+        OnPropertyChanged(nameof(DisplayStatusTone));
+        OnPropertyChanged(nameof(IsDisplayStatusVisible));
+
+        var text = DisplayStatusText;
+        var tone = DisplayStatusTone;
+        if (string.Equals(_lastDebugStatusText, text, StringComparison.Ordinal) && _lastDebugStatusTone == tone) {
+            return;
+        }
+
+        _lastDebugStatusText = text;
+        _lastDebugStatusTone = tone;
+        Debug.WriteLine(
+            $"[NuraPopupWpf.Status] device id={Id} name={Name} operation={LiveDevice?.OperationStatus?.Kind.ToString() ?? "none"} stage={OperationStageCode.ReplaceLineEndings(" ")} tone={tone} text={text.ReplaceLineEndings(" ")}");
     }
 
     private static StatusTone GetStatusTone(NuraDeviceOperationStatus status) {

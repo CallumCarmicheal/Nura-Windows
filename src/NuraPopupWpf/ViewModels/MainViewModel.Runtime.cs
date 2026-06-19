@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -21,6 +22,7 @@ public sealed partial class MainViewModel {
     private readonly ObservableCollection<ButtonFunctionOption> _tapAndHoldButtonOptions = [];
     private readonly ObservableCollection<DialFunctionOption> _dialFunctionOptions = [];
     private readonly Dictionary<string, NuraDeviceViewModel> _deviceModelsByIdentity = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _deviceSyncGate = new(1, 1);
 
     private NuraClient? _client;
     private bool _suppressProfileSelectionApply;
@@ -71,6 +73,8 @@ public sealed partial class MainViewModel {
 
     public StatusTone CurrentDeviceStatusTone => CurrentDevice.DisplayStatusTone;
 
+    public bool IsCurrentDeviceStatusVisible => CurrentDevice.IsDisplayStatusVisible;
+
     public string GlobalStatusText {
         get => _globalStatusText;
         private set => SetProperty(ref _globalStatusText, value);
@@ -92,6 +96,7 @@ public sealed partial class MainViewModel {
         OnPropertyChanged(nameof(CurrentDeviceActionText));
         OnPropertyChanged(nameof(CurrentDeviceStatusText));
         OnPropertyChanged(nameof(CurrentDeviceStatusTone));
+        OnPropertyChanged(nameof(IsCurrentDeviceStatusVisible));
     }
 
     public async Task InitializeLiveAsync(bool resumedAuthenticatedSession, string? resumeError, CancellationToken cancellationToken = default) {
@@ -118,7 +123,6 @@ public sealed partial class MainViewModel {
                 : $"Continue signing in as {AuthenticationEmail}, or skip if your device keys are already stored locally.";
         }
 
-        await SyncDevicesFromClientAsync(preferFirstConnectedDevice: true, cancellationToken);
     }
 
     public void NotifyBluetoothMonitoringStarted() {
@@ -132,6 +136,7 @@ public sealed partial class MainViewModel {
 
     public async ValueTask DisposeAsync() {
         CancelGlobalStatusReset();
+        CancelScheduledImmersionApply();
         if (_client is not null) {
             DetachClientEvents();
         }
@@ -214,44 +219,49 @@ public sealed partial class MainViewModel {
             return;
         }
 
-        var liveDevices = _client.Devices.All.OfType<ConnectedNuraDevice>().ToList();
-        var liveKeys = liveDevices.Select(GetLiveDeviceKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        await _deviceSyncGate.WaitAsync(cancellationToken);
+        try {
+            var liveDevices = _client.Devices.All.OfType<ConnectedNuraDevice>().ToList();
+            var liveKeys = liveDevices.Select(GetLiveDeviceKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var liveDevice in liveDevices) {
-            if (!_deviceModelsByIdentity.TryGetValue(GetLiveDeviceKey(liveDevice), out var model)) {
-                model = NuraDeviceViewModel.CreateLive(liveDevice, Profiles, ConnectToNura, HasAuthenticatedWithNura);
-                RegisterDeviceModel(model);
-                Devices.Add(model);
+            foreach (var liveDevice in liveDevices) {
+                if (!_deviceModelsByIdentity.TryGetValue(GetLiveDeviceKey(liveDevice), out var model)) {
+                    model = NuraDeviceViewModel.CreateLive(liveDevice, Profiles, ConnectToNura, HasAuthenticatedWithNura);
+                    RegisterDeviceModel(model);
+                    Devices.Add(model);
+                } else {
+                    model.AttachLiveDevice(liveDevice);
+                    model.SetAuthContext(ConnectToNura, HasAuthenticatedWithNura);
+                }
+            }
+
+            var staleModels = Devices
+                .Where(device => device.IsLive && !liveKeys.Contains(device.Id))
+                .ToList();
+            foreach (var staleModel in staleModels) {
+                staleModel.PropertyChanged -= OnDevicePropertyChanged;
+                Devices.Remove(staleModel);
+                _deviceModelsByIdentity.Remove(staleModel.Id);
+                _devicePriorityIds.RemoveAll(id => string.Equals(id, staleModel.Id, StringComparison.OrdinalIgnoreCase));
+                await staleModel.DisposeAsync();
+            }
+
+            if (Devices.Count > 0) {
+                if (preferFirstConnectedDevice && Devices.Any(device => device.IsConnected)) {
+                    CurrentDevice = Devices.First(device => device.IsConnected);
+                } else if (!_deviceModelsByIdentity.ContainsKey(CurrentDevice.Id)) {
+                    CurrentDevice = Devices.First();
+                }
             } else {
-                model.AttachLiveDevice(liveDevice);
-                model.SetAuthContext(ConnectToNura, HasAuthenticatedWithNura);
+                ResetCurrentSelectionToEmpty();
             }
+
+            RaiseDeviceListPropertiesChanged();
+
+            await TryAutoSetupLiveDevicesAsync(cancellationToken);
+        } finally {
+            _deviceSyncGate.Release();
         }
-
-        var staleModels = Devices
-            .Where(device => device.IsLive && !liveKeys.Contains(device.Id))
-            .ToList();
-        foreach (var staleModel in staleModels) {
-            staleModel.PropertyChanged -= OnDevicePropertyChanged;
-            Devices.Remove(staleModel);
-            _deviceModelsByIdentity.Remove(staleModel.Id);
-            _devicePriorityIds.RemoveAll(id => string.Equals(id, staleModel.Id, StringComparison.OrdinalIgnoreCase));
-            await staleModel.DisposeAsync();
-        }
-
-        if (Devices.Count > 0) {
-            if (preferFirstConnectedDevice && Devices.Any(device => device.IsConnected)) {
-                CurrentDevice = Devices.First(device => device.IsConnected);
-            } else if (!_deviceModelsByIdentity.ContainsKey(CurrentDevice.Id)) {
-                CurrentDevice = Devices.First();
-            }
-        } else {
-            ResetCurrentSelectionToEmpty();
-        }
-
-        RaiseDeviceListPropertiesChanged();
-
-        await TryAutoSetupLiveDevicesAsync(cancellationToken);
     }
 
     private void RegisterDeviceModel(NuraDeviceViewModel device) {
@@ -316,7 +326,9 @@ public sealed partial class MainViewModel {
     private async void OnClientDeviceConnected(object? sender, NuraDeviceConnectionEventArgs e) {
         await RunOnUiThreadAsync(async () => {
             FlashGlobalStatus($"Device connected: {e.Device.Info.DisplayName}.", StatusTone.Success);
-            await SyncDevicesFromClientAsync(preferFirstConnectedDevice: false, CancellationToken.None);
+            await SyncDevicesFromClientAsync(
+                preferFirstConnectedDevice: CurrentDevice.Id == EmptyDeviceId || !CurrentDevice.IsConnected,
+                CancellationToken.None);
         });
     }
 
@@ -328,8 +340,14 @@ public sealed partial class MainViewModel {
     }
 
     private void SetGlobalStatus(string text, StatusTone tone) {
+        var changed = !string.Equals(GlobalStatusText, text, StringComparison.Ordinal) || GlobalStatusTone != tone;
         GlobalStatusText = text;
         GlobalStatusTone = tone;
+
+        if (changed) {
+            Debug.WriteLine($"[NuraPopupWpf.Status] system tone={tone} text={text.ReplaceLineEndings(" ")}");
+        }
+
     }
 
     private void FlashGlobalStatus(string text, StatusTone tone) {

@@ -32,9 +32,8 @@ public sealed class LiveSdkBootstrapper : IPopupAppBootstrapper {
 
         var viewModel = MainViewModel.CreateLive(client, storagePaths);
         await viewModel.InitializeLiveAsync(resumedAuthenticatedSession, resumeError, cancellationToken);
-        await client.Devices.RefreshAsync(cancellationToken);
-        await viewModel.SyncLiveDevicesFromClientAsync(preferFirstConnectedDevice: true, cancellationToken);
         await client.Monitoring.StartAsync(cancellationToken);
+        await viewModel.SyncLiveDevicesFromClientAsync(preferFirstConnectedDevice: true, cancellationToken);
         viewModel.NotifyBluetoothMonitoringStarted();
 
         return new PopupAppContext(

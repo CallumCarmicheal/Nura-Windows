@@ -145,15 +145,6 @@
                 </Grid>
 
                 <Grid Grid.Row="1" Margin="0,18,0,18">
-                    <Border Style="{StaticResource InfoChipBorderStyle}"
-                            VerticalAlignment="Top"
-                            Margin="0,0,0,16"
-                            Visibility="{Binding ShowCurrentDeviceActionPanel, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel>
-                            <TextBlock Text="Device status" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                            <TextBlock Text="{Binding CurrentDeviceActionText}" Foreground="White" FontSize="13" TextWrapping="Wrap" Margin="0,6,0,0" />
-                        </StackPanel>
-                    </Border>
                     <Grid>
                         <Grid.Style>
                             <Style TargetType="Grid">
@@ -366,13 +357,6 @@
                                               TickFrequency="1"
                                               IsSnapToTickEnabled="True"
                                               Value="{Binding ImmersionIndex, Mode=TwoWay}" />
-                        <Button Command="{Binding ApplyImmersionCommand}"
-                                Style="{StaticResource ValuePillButtonStyle}"
-                                Padding="12,6"
-                                Margin="0,10,0,0"
-                                HorizontalAlignment="Right">
-                            <TextBlock Text="Apply immersion" Foreground="White" />
-                        </Button>
                     </StackPanel>
                 </StackPanel>
             </Grid>

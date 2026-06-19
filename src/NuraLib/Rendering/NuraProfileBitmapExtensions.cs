@@ -80,7 +80,7 @@ public static class NuraProfileBitmapExtensions {
             source.Height,
             dpiX,
             dpiY,
-            PixelFormats.Bgra32,
+            PixelFormats.Pbgra32,
             palette: null,
             pixels: source.Pixels,
             stride: source.Stride

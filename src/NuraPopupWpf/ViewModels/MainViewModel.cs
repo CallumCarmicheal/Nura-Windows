@@ -98,11 +98,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         ToggleExpandedCommand = new RelayCommand(_ => IsExpanded = !IsExpanded);
         ShowDevicePageCommand = new RelayCommand(_ => IsDevicePage = true);
         ShowSettingsPageCommand = new RelayCommand(_ => IsDevicePage = false);
-        SelectModeCommand = new AsyncRelayCommand(async (parameter, _) => {
-            if (parameter is string mode) {
-                await ApplyPersonalisationModeAsync(mode == "Personalised");
-            }
-        });
+        SelectModeCommand = new AsyncRelayCommand(
+            async (parameter, _) => {
+                if (parameter is string mode) {
+                    await ApplyPersonalisationModeAsync(mode == "Personalised");
+                }
+            },
+            allowConcurrentExecutions: true);
         ToggleSerialVisibilityCommand = new RelayCommand(_ => {
             IsSerialVisible = !IsSerialVisible;
         });
@@ -125,15 +127,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
                 SelectedWindowAnchorEdgeOption = _windowAnchorEdgeOptions.First(option => option.Edge == edge);
             }
         });
-        ApplyImmersionCommand = new AsyncRelayCommand(async (_, _) => await ApplyImmersionAsync());
-        ToggleAncCommand = new AsyncRelayCommand(async (_, _) => await ToggleAncAsync());
-        TogglePassthroughCommand = new AsyncRelayCommand(async (_, _) => await TogglePassthroughAsync());
-        ToggleSpatialCommand = new AsyncRelayCommand(async (_, _) => await ToggleSpatialAsync());
-        ApplyAncLevelCommand = new AsyncRelayCommand(async (_, _) => await ApplyAncLevelAsync());
-        RefreshBatteryCommand = new AsyncRelayCommand(async (_, _) => await CurrentDevice.RefreshBatteryAsync());
-        ApplyTouchButtonsCommand = new AsyncRelayCommand(async (_, _) => await ApplyTouchButtonsAsync());
+        ToggleAncCommand = new AsyncRelayCommand(async (_, _) => await ToggleAncAsync(), allowConcurrentExecutions: true);
+        TogglePassthroughCommand = new AsyncRelayCommand(async (_, _) => await TogglePassthroughAsync(), allowConcurrentExecutions: true);
+        ToggleSpatialCommand = new AsyncRelayCommand(async (_, _) => await ToggleSpatialAsync(), allowConcurrentExecutions: true);
+        ApplyAncLevelCommand = new AsyncRelayCommand(async (_, _) => await ApplyAncLevelAsync(), allowConcurrentExecutions: true);
+        RefreshBatteryCommand = new AsyncRelayCommand(async (_, _) => await CurrentDevice.RefreshBatteryAsync(), allowConcurrentExecutions: true);
+        ApplyTouchButtonsCommand = new AsyncRelayCommand(async (_, _) => await ApplyTouchButtonsAsync(), allowConcurrentExecutions: true);
         ResetTouchButtonsCommand = new RelayCommand(_ => ResetTouchButtonDraft());
-        ApplyDialCommand = new AsyncRelayCommand(async (_, _) => await ApplyDialAsync());
+        ApplyDialCommand = new AsyncRelayCommand(async (_, _) => await ApplyDialAsync(), allowConcurrentExecutions: true);
         ResetDialCommand = new RelayCommand(_ => ResetDialDraft());
 
         InitializeRuntimeExtensions();
@@ -162,8 +163,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     public ICommand SelectWindowAnchorEdgeCommand { get; }
 
     public ICommand SelectModeCommand { get; }
-
-    public ICommand ApplyImmersionCommand { get; }
 
     public ICommand ToggleAncCommand { get; }
 
@@ -297,6 +296,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             OnPropertyChanged(nameof(CurrentDeviceActionText));
             OnPropertyChanged(nameof(CurrentDeviceStatusText));
             OnPropertyChanged(nameof(CurrentDeviceStatusTone));
+            OnPropertyChanged(nameof(IsCurrentDeviceStatusVisible));
             OnPropertyChanged(nameof(CurrentDeviceReadinessText));
 
             ResetPendingDeviceEdits();
@@ -321,7 +321,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
 
             var profileId = Math.Max(0, CurrentProfiles.ToList().IndexOf(value));
             if (CurrentDevice.IsLive) {
-                if (!CurrentDevice.CanUseLocalCommands || CurrentDevice.IsBusy) {
+                if (!CurrentDevice.CanUseLocalCommands) {
                     return;
                 }
 
@@ -363,6 +363,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             OnPropertyChanged(nameof(CurrentVisualImmersionValue));
             OnPropertyChanged(nameof(HasPendingImmersionChange));
             UpdateProfileImage();
+
+            ScheduleImmersionApply(CurrentDevice, _pendingImmersionIndex.Value);
         }
     }
 
@@ -591,9 +593,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
 
     public bool ShowDisconnectedDevicePlaceholder => IsCurrentDeviceDisconnected && !ShowDisconnectedDeviceProfilePreview;
 
-    public bool CanInteractWithCurrentDeviceControls => CurrentDevice.CanUseFeatureControls;
+    public bool CanInteractWithCurrentDeviceControls => CurrentDevice.IsConnected;
 
-    public bool ShouldBlurCurrentDeviceControls => !CanInteractWithCurrentDeviceControls;
+    public bool ShouldBlurCurrentDeviceControls => !CurrentDevice.IsConnected;
 
     public string CurrentDeviceReadinessText => CurrentDevice.ReadinessStatusText;
 
@@ -746,6 +748,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             nameof(NuraDeviceViewModel.ReadinessStatusText) or
             nameof(NuraDeviceViewModel.DisplayStatusText) or
             nameof(NuraDeviceViewModel.DisplayStatusTone) or
+            nameof(NuraDeviceViewModel.IsDisplayStatusVisible) or
             nameof(NuraDeviceViewModel.OperationStatusText) or
             nameof(NuraDeviceViewModel.IsBusy)) {
             RefreshCurrentDeviceBindings();

@@ -5,6 +5,7 @@ namespace NuraPopupWpf.ViewModels;
 
 public sealed partial class MainViewModel {
     private int? _pendingImmersionIndex;
+    private CancellationTokenSource? _immersionApplyCts;
     private int? _pendingAncLevelValue;
     private NuraButtonConfiguration? _pendingTouchButtons;
     private NuraDialConfiguration? _pendingDial;
@@ -143,6 +144,7 @@ public sealed partial class MainViewModel {
         OnPropertyChanged(nameof(CurrentDeviceActionText));
         OnPropertyChanged(nameof(CurrentDeviceStatusText));
         OnPropertyChanged(nameof(CurrentDeviceStatusTone));
+        OnPropertyChanged(nameof(IsCurrentDeviceStatusVisible));
         OnPropertyChanged(nameof(CurrentDeviceReadinessText));
         OnPropertyChanged(nameof(ShowAncControl));
         OnPropertyChanged(nameof(ShowPassthroughControl));
@@ -212,15 +214,52 @@ public sealed partial class MainViewModel {
         RefreshCurrentDeviceBindings();
     }
 
-    private async Task ApplyImmersionAsync() {
-        var targetIndex = ImmersionIndex;
-        await CurrentDevice.ApplyImmersionIndexAsync(targetIndex);
-        _pendingImmersionIndex = null;
-        OnPropertyChanged(nameof(ImmersionIndex));
-        OnPropertyChanged(nameof(CurrentImmersionValue));
-        OnPropertyChanged(nameof(CurrentVisualImmersionValue));
-        OnPropertyChanged(nameof(HasPendingImmersionChange));
-        UpdateProfileImage();
+    private void ScheduleImmersionApply(NuraDeviceViewModel device, int targetIndex) {
+        CancelScheduledImmersionApply();
+
+        var cancellation = new CancellationTokenSource();
+        _immersionApplyCts = cancellation;
+        _ = ApplyImmersionAfterDelayAsync(device, targetIndex, cancellation);
+    }
+
+    private async Task ApplyImmersionAfterDelayAsync(
+        NuraDeviceViewModel device,
+        int targetIndex,
+        CancellationTokenSource cancellation
+    ) {
+        try {
+            // The headset takes about a second to apply an immersion change. Coalesce drag updates.
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellation.Token);
+            await device.ApplyImmersionIndexAsync(targetIndex, cancellation.Token);
+
+            if (cancellation.IsCancellationRequested ||
+                !ReferenceEquals(CurrentDevice, device) ||
+                _pendingImmersionIndex != targetIndex) {
+                return;
+            }
+
+            _pendingImmersionIndex = null;
+            OnPropertyChanged(nameof(ImmersionIndex));
+            OnPropertyChanged(nameof(CurrentImmersionValue));
+            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
+            OnPropertyChanged(nameof(HasPendingImmersionChange));
+            UpdateProfileImage();
+        } catch (OperationCanceledException) when (cancellation.IsCancellationRequested) {
+        } finally {
+            if (ReferenceEquals(_immersionApplyCts, cancellation)) {
+                _immersionApplyCts = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private void CancelScheduledImmersionApply() {
+        var cancellation = _immersionApplyCts;
+        _immersionApplyCts = null;
+        if (cancellation is not null) {
+            cancellation.Cancel();
+        }
     }
 
     private async Task ToggleAncAsync() {
@@ -277,6 +316,7 @@ public sealed partial class MainViewModel {
     }
 
     private void ResetPendingDeviceEdits() {
+        CancelScheduledImmersionApply();
         _pendingImmersionIndex = null;
         _pendingAncLevelValue = null;
         _pendingTouchButtons = null;
