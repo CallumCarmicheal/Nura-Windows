@@ -19,10 +19,11 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Border Grid.RowSpan="3"
+                    <Border Grid.RowSpan="4"
                             IsHitTestVisible="False">
                         <Border.Background>
                             <RadialGradientBrush Center="0.5,0.0"
@@ -46,7 +47,15 @@
                             MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
                         <controls:ShellHeaderControl />
                     </Border>
-                    <ScrollViewer Grid.Row="1"
+                    <Border Grid.Row="1"
+                            Background="#08FFFFFF"
+                            BorderBrush="#14FFFFFF"
+                            BorderThickness="0,0,0,1"
+                            Padding="18,9"
+                            Visibility="{Binding IsAuthenticationPage, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <controls:ShellStatusControl />
+                    </Border>
+                    <ScrollViewer Grid.Row="2"
                                   Margin="16,0"
                                   Style="{StaticResource OverlayScrollViewerStyle}"
                                   VerticalScrollBarVisibility="Auto"
@@ -65,7 +74,7 @@
                             </Grid>
                         </Grid>
                     </ScrollViewer>
-                    <Border Grid.Row="2"
+                    <Border Grid.Row="3"
                             BorderBrush="#1FFFFFFF"
                             BorderThickness="0,1,0,0"
                             Padding="16,12"

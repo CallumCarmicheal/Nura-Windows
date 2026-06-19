@@ -661,7 +661,6 @@
                             Visibility="{Binding ShowCurrentDeviceActionPanel, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel>
                             <TextBlock Text="LIVE CONTROL" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                            <TextBlock Text="{Binding CurrentDeviceReadinessText}" Foreground="#D9FFFFFF" FontSize="13" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding CurrentDeviceActionText}" Foreground="White" FontSize="13" TextWrapping="Wrap" />
                             <WrapPanel Margin="0,10,0,0">
                                 <Button Command="{Binding RefreshDevicesCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,8">

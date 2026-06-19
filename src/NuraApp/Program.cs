@@ -166,11 +166,15 @@ static class Program {
         }
 
         // Handler for device connected
+        client.Monitoring.DeviceConnected -= NuraDeviceConnectedAsync;
         client.Monitoring.DeviceConnected += NuraDeviceConnectedAsync;
+        client.Monitoring.DeviceDisconnected -= NuraDeviceDisconnectedAsync;
         client.Monitoring.DeviceDisconnected += NuraDeviceDisconnectedAsync;
 
         // Handle the user input for controlling devices.
+        logger.KeyPressedAsync -= HandleKeyPressAsync;
         logger.KeyPressedAsync += HandleKeyPressAsync;
+
         if (!logger.StartKeyListener()) {
             logger.WriteLine(
                 AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
@@ -178,6 +182,8 @@ static class Program {
                 "Keyboard hotkeys are disabled because console input is redirected or unavailable.");
         }
 
+        UpdateDevicesHoistText();
+        UpdateSelectedDeviceText();
         await client.Monitoring.StartAsync();
     }
 
@@ -517,10 +523,9 @@ static class Program {
 
     private static void UpdateSelectedDeviceText() {
         if (SelectedDevice is null) {
-            logger.SetHoistedSection(
-                "current device",
-                AnsiLine.From("[←/→ select · ? help]  ", AnsiPart.Dim("<no device selected>")));
-            logger.SetHoistedSection("current device:state", "");
+            // This is a one of situation, we want to do this just so the <no device selected> is at the bottom and there is not a gap.
+            logger.SetHoistedSection("current device", "");
+            logger.SetHoistedSection("current device:state", AnsiLine.From("[←/→ select · ? help]  ", AnsiPart.Dim("<no device selected>")));
             return;
         }
 

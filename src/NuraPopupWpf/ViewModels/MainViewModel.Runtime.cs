@@ -24,6 +24,10 @@ public sealed partial class MainViewModel {
 
     private NuraClient? _client;
     private bool _suppressProfileSelectionApply;
+    private bool _isBluetoothMonitoringActive;
+    private string _globalStatusText = "Demo devices ready.";
+    private StatusTone _globalStatusTone = StatusTone.Neutral;
+    private CancellationTokenSource? _globalStatusResetCts;
 
     public static MainViewModel CreateDemo(PopupDemoSeedData seedData, PopupAppStoragePaths storagePaths) {
         var viewModel = new MainViewModel(storagePaths);
@@ -59,7 +63,23 @@ public sealed partial class MainViewModel {
 
     public bool IsCurrentDeviceBusy => CurrentDevice.IsBusy;
 
-    public string CurrentDeviceActionText => CurrentDevice.OperationStatusText;
+    public string CurrentDeviceActionText => CurrentDevice.DisplayStatusText;
+
+    public string CurrentDeviceStatusText => CurrentDevice.Id == "__empty__"
+        ? "No Nura device selected."
+        : $"{CurrentDevice.Name}: {CurrentDevice.DisplayStatusText}";
+
+    public StatusTone CurrentDeviceStatusTone => CurrentDevice.DisplayStatusTone;
+
+    public string GlobalStatusText {
+        get => _globalStatusText;
+        private set => SetProperty(ref _globalStatusText, value);
+    }
+
+    public StatusTone GlobalStatusTone {
+        get => _globalStatusTone;
+        private set => SetProperty(ref _globalStatusTone, value);
+    }
 
     public bool ShowCurrentDeviceActionPanel => CurrentDevice.IsLive;
 
@@ -70,6 +90,8 @@ public sealed partial class MainViewModel {
         ProvisionCurrentDeviceCommand = new AsyncRelayCommand(async (_, _) => await ProvisionCurrentDeviceAsync());
         RefreshCurrentDeviceBindings();
         OnPropertyChanged(nameof(CurrentDeviceActionText));
+        OnPropertyChanged(nameof(CurrentDeviceStatusText));
+        OnPropertyChanged(nameof(CurrentDeviceStatusTone));
     }
 
     public async Task InitializeLiveAsync(bool resumedAuthenticatedSession, string? resumeError, CancellationToken cancellationToken = default) {
@@ -79,6 +101,7 @@ public sealed partial class MainViewModel {
         }
 
         AttachClientEvents();
+        SetGlobalStatus("Discovering paired Nura devices.", StatusTone.Information);
 
         AuthenticationEmail = _client.State.Configuration.Auth.UserEmail ?? string.Empty;
         HasAuthenticatedWithNura = resumedAuthenticatedSession;
@@ -98,11 +121,17 @@ public sealed partial class MainViewModel {
         await SyncDevicesFromClientAsync(preferFirstConnectedDevice: true, cancellationToken);
     }
 
+    public void NotifyBluetoothMonitoringStarted() {
+        _isBluetoothMonitoringActive = true;
+        UpdateGlobalDiscoveryStatus();
+    }
+
     public Task SyncLiveDevicesFromClientAsync(bool preferFirstConnectedDevice, CancellationToken cancellationToken = default) {
         return SyncDevicesFromClientAsync(preferFirstConnectedDevice, cancellationToken);
     }
 
     public async ValueTask DisposeAsync() {
+        CancelGlobalStatusReset();
         if (_client is not null) {
             DetachClientEvents();
         }
@@ -123,7 +152,7 @@ public sealed partial class MainViewModel {
         _devicePriorityIds.Clear();
 
         foreach (var profile in seedData.Profiles.Values) {
-            profile.Thumbnail = _renderer.RenderThumbnail(profile, 20);
+            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20).ToBitmapSource();
         }
 
         foreach (var device in seedData.Devices) {
@@ -139,6 +168,7 @@ public sealed partial class MainViewModel {
         AuthenticationEmail = seedData.AuthenticationEmail;
         AuthenticationStatusText = seedData.AuthenticationStatusText;
         UpdateAllDeviceAuthContexts();
+        SetGlobalStatus($"Demo mode: {Devices.Count} device{(Devices.Count == 1 ? string.Empty : "s")} ready.", StatusTone.Neutral);
 
         if (Devices.Count > 0) {
             CurrentDevice = Devices[0];
@@ -155,9 +185,11 @@ public sealed partial class MainViewModel {
         }
 
         try {
+            FlashGlobalStatus("Refreshing paired Nura devices.", StatusTone.Information);
             await _client.Devices.RefreshAsync();
             await SyncDevicesFromClientAsync(preferFirstConnectedDevice: false, CancellationToken.None);
         } catch (Exception ex) {
+            FlashGlobalStatus($"Device discovery failed: {ex.Message}", StatusTone.Error);
             if (CurrentDevice.IsLive) {
                 CurrentDevice.WarningText = ex.Message;
             }
@@ -283,14 +315,67 @@ public sealed partial class MainViewModel {
 
     private async void OnClientDeviceConnected(object? sender, NuraDeviceConnectionEventArgs e) {
         await RunOnUiThreadAsync(async () => {
+            FlashGlobalStatus($"Device connected: {e.Device.Info.DisplayName}.", StatusTone.Success);
             await SyncDevicesFromClientAsync(preferFirstConnectedDevice: false, CancellationToken.None);
         });
     }
 
     private async void OnClientDeviceDisconnected(object? sender, NuraDeviceConnectionEventArgs e) {
         await RunOnUiThreadAsync(async () => {
+            FlashGlobalStatus($"Device disconnected: {e.Device.Info.DisplayName}.", StatusTone.Warning);
             await SyncDevicesFromClientAsync(preferFirstConnectedDevice: false, CancellationToken.None);
         });
+    }
+
+    private void SetGlobalStatus(string text, StatusTone tone) {
+        GlobalStatusText = text;
+        GlobalStatusTone = tone;
+    }
+
+    private void FlashGlobalStatus(string text, StatusTone tone) {
+        SetGlobalStatus(text, tone);
+        CancelGlobalStatusReset();
+
+        var cancellation = new CancellationTokenSource();
+        _globalStatusResetCts = cancellation;
+        _ = ResetGlobalStatusAfterDelayAsync(cancellation);
+    }
+
+    private async Task ResetGlobalStatusAfterDelayAsync(CancellationTokenSource cancellation) {
+        try {
+            await Task.Delay(TimeSpan.FromSeconds(4), cancellation.Token);
+            await RunOnUiThreadAsync(() => {
+                if (!cancellation.IsCancellationRequested && ReferenceEquals(_globalStatusResetCts, cancellation)) {
+                    UpdateGlobalDiscoveryStatus();
+                }
+            });
+        } catch (OperationCanceledException) when (cancellation.IsCancellationRequested) {
+        }
+    }
+
+    private void CancelGlobalStatusReset() {
+        var cancellation = _globalStatusResetCts;
+        _globalStatusResetCts = null;
+        if (cancellation is null) {
+            return;
+        }
+
+        cancellation.Cancel();
+        cancellation.Dispose();
+    }
+
+    private void UpdateGlobalDiscoveryStatus() {
+        if (!IsLiveMode) {
+            SetGlobalStatus($"Demo mode: {Devices.Count} device{(Devices.Count == 1 ? string.Empty : "s")} ready.", StatusTone.Neutral);
+            return;
+        }
+
+        var connectedCount = Devices.Count(device => device.IsLive && device.IsConnected);
+        var deviceText = connectedCount == 1 ? "1 Nura device" : $"{connectedCount} Nura devices";
+        var suffix = _isBluetoothMonitoringActive
+            ? "listening for changes."
+            : "Bluetooth monitoring is starting.";
+        SetGlobalStatus($"Discovered {deviceText}, {suffix}", StatusTone.Information);
     }
 
     private static void ReplaceCollection<T>(ObservableCollection<T> collection, IEnumerable<T> items) {

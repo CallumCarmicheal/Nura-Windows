@@ -295,6 +295,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
 
             RefreshCurrentDeviceBindings();
             OnPropertyChanged(nameof(CurrentDeviceActionText));
+            OnPropertyChanged(nameof(CurrentDeviceStatusText));
+            OnPropertyChanged(nameof(CurrentDeviceStatusTone));
             OnPropertyChanged(nameof(CurrentDeviceReadinessText));
 
             ResetPendingDeviceEdits();
@@ -725,7 +727,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             OnPropertyChanged(nameof(CurrentBatteryText));
         }
 
-        if (e.PropertyName is nameof(DeviceModel.AncEnabled) or
+        if (e.PropertyName is nameof(DeviceModel.Name) or
+            nameof(DeviceModel.AncEnabled) or
             nameof(DeviceModel.SocialMode) or
             nameof(DeviceModel.SpatialEnabled) or
             nameof(DeviceModel.TouchButtons) or
@@ -741,6 +744,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             nameof(NuraDeviceViewModel.CanUseFeatureControls) or
             nameof(NuraDeviceViewModel.RequiresProvisioning) or
             nameof(NuraDeviceViewModel.ReadinessStatusText) or
+            nameof(NuraDeviceViewModel.DisplayStatusText) or
+            nameof(NuraDeviceViewModel.DisplayStatusTone) or
             nameof(NuraDeviceViewModel.OperationStatusText) or
             nameof(NuraDeviceViewModel.IsBusy)) {
             RefreshCurrentDeviceBindings();
@@ -827,7 +832,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         var rightData = BlendValues(fromProfile.RightData, toProfile.RightData, blend);
         var colour = Lerp(fromProfile.Colour, toProfile.Colour, blend);
 
-        return new ProfileModel(toProfile.Name, colour, leftData, rightData);
+        return new ProfileModel(toProfile.Name, new NuraProfileVisualisationData { Valid = true, Colour = colour, LeftData = leftData, RightData = rightData });
     }
 
     private static double[] BlendValues(IReadOnlyList<double> fromValues, IReadOnlyList<double> toValues, double blend) {

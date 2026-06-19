@@ -141,6 +141,8 @@ public sealed partial class MainViewModel {
         OnPropertyChanged(nameof(ShouldBlurCurrentDeviceControls));
         OnPropertyChanged(nameof(ShowCurrentDeviceActionPanel));
         OnPropertyChanged(nameof(CurrentDeviceActionText));
+        OnPropertyChanged(nameof(CurrentDeviceStatusText));
+        OnPropertyChanged(nameof(CurrentDeviceStatusTone));
         OnPropertyChanged(nameof(CurrentDeviceReadinessText));
         OnPropertyChanged(nameof(ShowAncControl));
         OnPropertyChanged(nameof(ShowPassthroughControl));
