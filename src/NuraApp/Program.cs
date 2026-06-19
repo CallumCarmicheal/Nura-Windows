@@ -753,6 +753,16 @@ static class Program {
         //        $"Rendered current hearing profile into {filePath}.");
     }
 
+        //var filePath = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".png";
+        //var bmp = render.ToDrawingBitmap();
+        //bmp.Save(filePath);
+        //
+        //logger.WriteLine(
+        //        AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+        //        AnsiPart.Success("[NuraDevice] "),
+        //        $"Rendered current hearing profile into {filePath}.");
+    }
+
     private static void SelectAdjacentDevice(int direction) {
         var connectedDevices = Client?.Devices.Connected
             .Where(device => device.IsConnected)
@@ -1117,6 +1127,10 @@ static class Program {
             if (SupportsPassthroughHotkey(device)) {
                 logger.WriteLine("  p toggle passthrough/social mode");
             }
+        }
+
+        if (device?.Info.Supports(NuraAudioCapabilities.VisualisationData) == true) {
+            logger.WriteLine("  TAB render available profile visualisations");
         }
 
         if (device?.Info.Supports(NuraAudioCapabilities.VisualisationData) == true)
