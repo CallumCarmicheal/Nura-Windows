@@ -231,58 +231,7 @@ static class Program {
                 AnsiPart.FgHex("[NuraLib] ", 0x8B5CF6),
                 $"Device connected: {device.Info.DisplayName}.");
 
-            device.OperationStatusChanged += (_, op) => {
-                logger.WriteLine(
-                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                    $"{device.Info.DisplayName}: {op?.Current?.Kind.ToString() ?? "NullType"} - {op?.Current?.Message ?? "NoMsg"}.");
-
-                FlashSelectedDeviceStatusText(AnsiLine.From(NuraGradient.Text(device.Info.DisplayName), $" => {op?.Current?.Kind.ToString() ?? "NullType"} - {op?.Current?.Message ?? "NoMsg"}."));
-            };
-
-            device.HeadsetIndicationReceived += (_, data) => {
-                // We received data.
-                logger.WriteLine(
-                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                    $"{device.Info.DisplayName}: {data.Identifier.ToString()} : {data.Value:X2}.");
-            };
-
-            device.State.AncChanged += (_, data) => {
-                // We received data.
-                logger.WriteLine(
-                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                    $"{device.Info.DisplayName}: AncEnabledChanged : {data.Current?.ToString() ?? "<null>"}.");
-            };
-
-            device.State.AncEnabledChanged += (_, data) => {
-                // We received data.
-                logger.WriteLine(
-                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                    $"{device.Info.DisplayName}: AncEnabledChanged : {data.Current?.ToString() ?? "<null>"}.");
-            };
-
-            device.State.BatteryChanged += (_, data) => {
-                logger.WriteLine(
-                    AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                    AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                    $"{device.Info.DisplayName}: Battery : {FormatBattery(data.Current) ?? "<null>"}.");
-            };
-
-            device.Changed += (_, data) => {
-                // We received data.
-                // logger.WriteLine(
-                //     AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
-                //     AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
-                //     $"{device.Info.DisplayName}: Device state changed.");
-
-                // Update our current status
-                if (SelectedDevice == e.Device) {
-                    UpdateSelectedDeviceText();
-                }
-            };
+            AttachDeviceEventHandlers(device);
 
             // If the device is not provisioned, we can attempt to provision it.
             if (device.ProvisioningRequired) {
@@ -385,7 +334,84 @@ static class Program {
                 AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
                 AnsiPart.Error("[NuraLib] ERROR : "),
                 $"Device disconnect handler failed ({device.Info.DisplayName}): {ex.Message}.");
+        } finally {
+            DetachDeviceEventHandlers(device);
         }
+    }
+
+    private static void AttachDeviceEventHandlers(ConnectedNuraDevice device) {
+        DetachDeviceEventHandlers(device); // Ensure we are not already subscribed.
+
+        // Attach event handlers.
+        device.OperationStatusChanged += NuraDevice_OnOperationStatusChanged;
+        device.HeadsetIndicationReceived += NuraDevice_OnHeadsetIndicationReceived;
+        device.State.AncChanged += NuraDevice_OnAncChanged;
+        device.State.AncEnabledChanged += NuraDevice_OnAncEnabledChanged;
+        device.State.BatteryChanged += NuraDevice_OnBatteryChanged;
+        device.Changed += NuraDevice_OnDeviceChanged;
+    }
+
+    private static void DetachDeviceEventHandlers(ConnectedNuraDevice device) {
+        device.OperationStatusChanged -= NuraDevice_OnOperationStatusChanged;
+        device.HeadsetIndicationReceived -= NuraDevice_OnHeadsetIndicationReceived;
+        device.State.AncChanged -= NuraDevice_OnAncChanged;
+        device.State.AncEnabledChanged -= NuraDevice_OnAncEnabledChanged;
+        device.State.BatteryChanged -= NuraDevice_OnBatteryChanged;
+        device.Changed -= NuraDevice_OnDeviceChanged;
+    }
+
+    private static void NuraDevice_OnOperationStatusChanged(object? sender, NuraValueChangedEventArgs<NuraDeviceOperationStatus?> op) {
+        var device = (sender as ConnectedNuraDevice)!;
+
+        logger.WriteLine(
+            AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+            AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+            $"{device.Info.DisplayName}: {op.Current?.Kind.ToString() ?? "NullType"} - {op.Current?.Message ?? "NoMsg"}.");
+
+        FlashSelectedDeviceStatusText(AnsiLine.From(NuraGradient.Text(device.Info.DisplayName), $" => {op.Current?.Kind.ToString() ?? "NullType"} - {op.Current?.Message ?? "NoMsg"}."));
+    }
+
+    private static void NuraDevice_OnHeadsetIndicationReceived(object? sender, NuraHeadsetIndicationEventArgs data) {
+        var device = (sender as ConnectedNuraDevice)!;
+
+        logger.WriteLine(
+            AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+            AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+            $"{device.Info.DisplayName}: {data.Identifier.ToString()} : {data.Value:X2}.");
+    }
+
+    private static void NuraDevice_OnAncChanged(object? sender, NuraValueChangedEventArgs<NuraAncState> data) {
+        var device = (sender as ConnectedNuraDevice)!;
+
+        logger.WriteLine(
+            AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+            AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+            $"{device.Info.DisplayName}: AncChanged : {data.Current?.ToString() ?? "<null>"}.");
+    }
+
+    private static void NuraDevice_OnAncEnabledChanged(object? sender, NuraValueChangedEventArgs<bool?> data) {
+        var device = (sender as ConnectedNuraDevice)!;
+
+        logger.WriteLine(
+            AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+            AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+            $"{device.Info.DisplayName}: AncEnabledChanged : {data.Current?.ToString() ?? "<null>"}.");
+    }
+
+    private static void NuraDevice_OnBatteryChanged(object? sender, NuraValueChangedEventArgs<NuraBatteryStatus?> data) {
+        var device = (sender as ConnectedNuraDevice)!;
+
+        logger.WriteLine(
+            AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+            AnsiPart.FgHex("[NuraDevice] ", 0x06B6D4),
+            $"{device.Info.DisplayName}: Battery : {FormatBattery(data.Current) ?? "<null>"}.");
+    }
+
+    private static void NuraDevice_OnDeviceChanged(object? sender, EventArgs data) {
+        var device = (sender as ConnectedNuraDevice)!;
+
+        if (SelectedDevice == device)
+            UpdateSelectedDeviceText();
     }
 
     private static async Task<bool> AttemptLogin(NuraClient client) {
