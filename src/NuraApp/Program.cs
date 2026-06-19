@@ -3,7 +3,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Windows.Media.Animation;
 
+using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
 
 using NuraApp;
@@ -13,6 +15,7 @@ using NuraLib.Configuration;
 using NuraLib.Devices;
 using NuraLib.Logging;
 using NuraLib.Monitoring;
+using NuraLib.Rendering;
 
 static class Program {
     private static readonly CancellationTokenSource AppCts = new();
@@ -452,7 +455,6 @@ static class Program {
                     await client.Auth.RequestEmailCodeAsync(email);
 
                     logger.SetHoistedSection("status", "Sent 6 digit code to email, waiting for input.");
-
                     logger.WriteLine(
                         AnsiPart.Success("Login code sent. "),
                         "It may take up to a minute to arrive.");
@@ -656,6 +658,10 @@ static class Program {
                 ToggleNuraDebugMessages();
                 return;
 
+            case ConsoleKey.Tab:
+                await RenderHearingProfile().ConfigureAwait(false);
+                return;
+
             case ConsoleKey.D1:
             case ConsoleKey.NumPad1:
                 await SelectProfileAsync(0, cancellationToken).ConfigureAwait(false);
@@ -694,6 +700,58 @@ static class Program {
         }
     }
 
+
+    static NuraProfileBitmapRenderer ProfileBitmapRenderer = new NuraProfileBitmapRenderer();
+    private static async Task RenderHearingProfile() {
+        var device = SelectedDevice as ConnectedNuraDevice;
+
+        if (device == null) {
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.Warning("[NuraDevice] "),
+                $"There is no active device selected, unable to display profile.");
+            return;
+        }
+
+        // Get the profile data
+        if ((device.Info.Supports(NuraAudioCapabilities.VisualisationData) == false) 
+                || device.Profiles.CurrentVisualisation == null) {
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.Warning("[NuraDevice] "),
+                $"There is no attached profile visualization to device properties.");
+            return;
+        }
+
+        // Render the current vis
+        var prof = device.Profiles.Names[device.Profiles.ProfileId!.Value];
+
+        List<string> titles = device.Profiles.Names.Select(x => x.Value).ToList();
+        List<string> renders = new List<string>();
+
+        foreach (var (idx, vis) in device.Profiles.Visualisations) {
+            var render = ProfileBitmapRenderer.Render(vis, 1, 60, 1);
+            var ansiText = render.TrimToVisibleSquare().BuildAnsiConsoleString(alphaCutoff: 128);
+            renders.Add(ansiText);
+        }
+
+        var table = AnsiTable.Render(renders, titles, verticalDivider: false);
+
+        logger.WriteLine(
+            AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+            AnsiPart.Success("[Profile] "),
+            $"Profile {device.Profiles.ProfileId} - render:\n\n",
+            new AnsiPart(table));
+
+        //var filePath = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".png";
+        //var bmp = render.ToDrawingBitmap();
+        //bmp.Save(filePath);
+        //
+        //logger.WriteLine(
+        //        AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+        //        AnsiPart.Success("[NuraDevice] "),
+        //        $"Rendered current hearing profile into {filePath}.");
+    }
 
     private static void SelectAdjacentDevice(int direction) {
         var connectedDevices = Client?.Devices.Connected
@@ -1052,6 +1110,7 @@ static class Program {
             AnsiPart.FgHex("[NuraApp] ", 0x06B6D4),
             device is null ? "Hotkeys:" : $"Hotkeys for {device.Info.DisplayName} ({device.Info.TypeName}):");
         logger.WriteLine("  ←/→ select device, when multiple devices are connected");
+
         if (device?.Info.Supports(NuraAudioCapabilities.Immersion) == true) logger.WriteLine("  ↑/↓ or +/- immersion up/down");
         if (device?.Info.Supports(NuraAudioCapabilities.Anc) == true) {
             logger.WriteLine("  a toggle ANC");
@@ -1059,12 +1118,17 @@ static class Program {
                 logger.WriteLine("  p toggle passthrough/social mode");
             }
         }
-        if (device?.Info.Supports(NuraAudioCapabilities.AncLevel) == true) logger.WriteLine("  [ / ] adjust ANC level");
-        if (device?.Info.Supports(NuraAudioCapabilities.GlobalAncToggle) == true) logger.WriteLine("  g toggle global ANC");
-        if (device?.Info.Supports(NuraAudioCapabilities.PersonalisedMode) == true) logger.WriteLine("  n toggle personalised/neutral");
-        if (device?.Info.Supports(NuraAudioCapabilities.Spatial) == true) logger.WriteLine("  s toggle spatial");
+
+        if (device?.Info.Supports(NuraAudioCapabilities.VisualisationData) == true)
+            logger.WriteLine("  TAB render available profile visualisations");
+
+        if (device?.Info.Supports(NuraAudioCapabilities.AncLevel) == true)              logger.WriteLine("  [ / ] adjust ANC level");
+        if (device?.Info.Supports(NuraAudioCapabilities.GlobalAncToggle) == true)       logger.WriteLine("  g toggle global ANC");
+        if (device?.Info.Supports(NuraAudioCapabilities.PersonalisedMode) == true)      logger.WriteLine("  n toggle personalised/neutral");
+        if (device?.Info.Supports(NuraAudioCapabilities.Spatial) == true)               logger.WriteLine("  s toggle spatial");
         if (device?.Info.Supports(NuraInteractionCapabilities.VoicePromptGain) == true) logger.WriteLine("  v cycle voice prompt gain");
-        if (device?.Info.Supports(NuraSystemCapabilities.Profiles) == true) logger.WriteLine("  1/2/3 select profile slot");
+        if (device?.Info.Supports(NuraSystemCapabilities.Profiles) == true)             logger.WriteLine("  1/2/3 select profile slot");
+        
         logger.WriteLine("  b refresh battery");
         logger.WriteLine("  r refresh selected device");
         logger.WriteLine("  t toggle Nura debug/trace logging");
