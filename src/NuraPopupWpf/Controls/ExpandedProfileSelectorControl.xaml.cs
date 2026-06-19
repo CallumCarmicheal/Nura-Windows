@@ -967,7 +967,8 @@ public partial class ExpandedProfileSelectorControl : UserControl {
         var leftData = BlendValues(fromProfile.LeftData, toProfile.LeftData, blend);
         var rightData = BlendValues(fromProfile.RightData, toProfile.RightData, blend);
         var colour = Lerp(fromProfile.Colour, toProfile.Colour, blend);
-        return new ProfileModel(toProfile.Name, colour, leftData, rightData);
+        return new ProfileModel(toProfile.Name, 
+            new NuraLib.Devices.NuraProfileVisualisationData { Valid = true, Colour = colour, LeftData = leftData, RightData = rightData });
     }
 
     private static double[] BlendValues(IReadOnlyList<double> fromValues, IReadOnlyList<double> toValues, double blend) {

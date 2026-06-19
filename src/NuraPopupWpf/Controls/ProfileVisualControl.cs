@@ -6,13 +6,15 @@ using System.Runtime.CompilerServices;
 using NuraPopupWpf.Models;
 using NuraPopupWpf.Services;
 
+using NuraLib.Rendering;
+
 namespace NuraPopupWpf.Controls;
 
 /// <summary>
 /// Render the hearing profile morphing animation using either a cached bitmap or a retained-mode vector drawing, depending on the <see cref="UseBitmapRenderer"/> property.
 /// </summary>
 public sealed class ProfileVisualControl : FrameworkElement {
-    private static readonly NuraProfileRenderer BitmapRenderer = new();
+    private static readonly NuraProfileBitmapRenderer BitmapRenderer = new();
     private const int BAND_COUNT = 6;
     private const int SHAPE_SEGMENTS = 120;
 
@@ -491,13 +493,15 @@ public sealed class ProfileVisualControl : FrameworkElement {
         }
 
         // Render the hearing profile onto a bitmap.
-        var bitmap = BitmapRenderer.Render(
-                targetProfile: toProfile,
-                fromProfile: fromProfile,
+        var rawBitmap = BitmapRenderer.Render(
+                targetProfile: toProfile.VisualisationData,
+                fromProfile: fromProfile.VisualisationData,
                 profileBlendProgress: blend,
                 personalisationProgress: mode,
                 size: renderSize,
                 immersionValue: immersion);
+
+        var bitmap = rawBitmap.ToBitmapSource();
 
         // Cache our new bitmap state.
         bitmapState = new CachedBitmapState(

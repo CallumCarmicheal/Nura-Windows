@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Threading;
 
 using NuraLib.Devices;
+using NuraLib.Rendering;
 
 using NuraPopupWpf.Models;
 using NuraPopupWpf.Services;
@@ -13,7 +14,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private const int DefaultProfileSlotCount = 3;
 
     private readonly IReadOnlyList<ProfileModel> _fallbackProfiles;
-    private readonly NuraProfileRenderer _renderer = new();
+    private readonly NuraProfileBitmapRenderer _renderer = new();
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private bool _connectToNura;
     private bool _hasAuthenticatedWithNura;
@@ -829,9 +830,9 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             }
 
             var profile = visualisation is { Valid: true }
-                ? new ProfileModel(name, visualisation.Colour, visualisation.LeftData.ToArray(), visualisation.RightData.ToArray())
+                ? new ProfileModel(name, visualisation)
                 : GetFallbackProfile(name, profileId);
-            profile.Thumbnail = _renderer.RenderThumbnail(profile, 20);
+            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20).ToBitmapSource();
             profiles.Add(profile);
         }
 
@@ -840,11 +841,12 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
 
     private ProfileModel GetFallbackProfile(string name, int profileId) {
         if (_fallbackProfiles.Count == 0) {
-            return new ProfileModel(name, 0.45, [], []);
+            // TODO: Check if I should be leaving this as valid in this scenario.
+            return new ProfileModel(name, NuraProfileVisualisationData.Empty with { Valid = true, Colour = 0.45 });
         }
 
         var template = _fallbackProfiles[profileId % _fallbackProfiles.Count];
-        return new ProfileModel(name, template.Colour, template.LeftData.ToArray(), template.RightData.ToArray()) {
+        return new ProfileModel(name, template.VisualisationData) {
             Thumbnail = template.Thumbnail
         };
     }

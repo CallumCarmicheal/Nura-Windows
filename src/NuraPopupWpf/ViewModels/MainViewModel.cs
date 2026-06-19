@@ -1,5 +1,7 @@
 using NuraLib;
 using NuraLib.Devices;
+using NuraLib.Rendering;
+
 using NuraPopupWpf.Bootstrap;
 using NuraPopupWpf.Infrastructure;
 using NuraPopupWpf.Models;
@@ -22,7 +24,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     private const int MaxExportRenderSize = 12288;
     private const string EmptyDeviceId = "__empty__";
 
-    private readonly NuraProfileRenderer _renderer = new();
+    private readonly NuraProfileBitmapRenderer _renderer = new();
     private readonly HearingProfileExportService _profileExportService = new();
     private readonly AppSettingStore _appSettingsStore;
     private readonly ObservableCollection<string> _modes = new ObservableCollection<string>(new[] { "Neutral", "Personalised" });
@@ -85,7 +87,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         Devices = [];
 
         foreach (var profile in Profiles.Values) {
-            profile.Thumbnail = _renderer.RenderThumbnail(profile, 20);
+            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20).ToBitmapSource();
         }
 
         InitializeEmptyCurrentSelection();

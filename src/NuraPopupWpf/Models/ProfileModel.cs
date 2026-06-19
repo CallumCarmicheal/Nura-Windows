@@ -1,24 +1,26 @@
+using NuraLib.Devices;
+
 using System.Windows.Media;
 
 namespace NuraPopupWpf.Models;
 
 public sealed class ProfileModel {
-    public ProfileModel(string name, double colour, IReadOnlyList<double> leftData, IReadOnlyList<double> rightData) {
+    public string Name { get; init; }
+
+    public NuraProfileVisualisationData VisualisationData { get; init; }
+
+    public double Colour => VisualisationData.Colour;
+
+    public IReadOnlyList<double> LeftData => VisualisationData.LeftData;
+
+    public IReadOnlyList<double> RightData => VisualisationData.RightData;
+
+    public ImageSource? Thumbnail { get; set; } = null;
+
+    public ProfileModel(string name, NuraProfileVisualisationData visualisationData) {
         Name = name;
-        Colour = colour;
-        LeftData = leftData;
-        RightData = rightData;
+        VisualisationData = visualisationData;
     }
-
-    public string Name { get; }
-
-    public double Colour { get; }
-
-    public IReadOnlyList<double> LeftData { get; }
-
-    public IReadOnlyList<double> RightData { get; }
-
-    public ImageSource? Thumbnail { get; set; }
 
     public override string ToString() => Name;
 }

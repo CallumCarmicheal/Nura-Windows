@@ -6,6 +6,8 @@ using System.Windows.Threading;
 using NuraLib;
 using NuraLib.Devices;
 using NuraLib.Monitoring;
+using NuraLib.Rendering;
+
 using NuraPopupWpf.Bootstrap;
 using NuraPopupWpf.Infrastructure;
 using NuraPopupWpf.Models;
@@ -328,13 +330,13 @@ public sealed partial class MainViewModel {
 
     private void RenderProfileThumbnails(IEnumerable<ProfileModel> profiles) {
         foreach (var profile in profiles) {
-            profile.Thumbnail = _renderer.RenderThumbnail(profile, 20);
+            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20).ToBitmapSource();
         }
     }
 
     private ProfileModel GetFallbackProfile(string name, int profileId) {
         var template = Profiles.Values.ElementAt(profileId % Profiles.Count);
-        return new ProfileModel(name, template.Colour, template.LeftData.ToArray(), template.RightData.ToArray()) {
+        return new ProfileModel(name, template.VisualisationData) {
             Thumbnail = template.Thumbnail
         };
     }

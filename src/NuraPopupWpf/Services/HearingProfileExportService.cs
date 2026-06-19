@@ -5,6 +5,8 @@ using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 
+using NuraLib.Rendering;
+
 using NuraPopupWpf.Controls;
 using NuraPopupWpf.Models;
 
@@ -14,7 +16,7 @@ public sealed class HearingProfileExportService {
     private const int MinRenderSize = 4;
     private const int MaxRenderSize = 12288;
 
-    private readonly NuraProfileRenderer _bitmapRenderer = new();
+    private readonly NuraProfileBitmapRenderer _bitmapRenderer = new();
 
     public string ExportProfiles(IEnumerable<DeviceModel> devices, int requestedSize, bool useBitmapRenderer) {
         var renderSize = Math.Clamp(requestedSize, MinRenderSize, MaxRenderSize);
@@ -27,7 +29,7 @@ public sealed class HearingProfileExportService {
                 var fileName = $"{SanitizeFileName(device.Name)} - {SanitizeFileName(profile.Name)}.png";
                 var filePath = Path.Combine(exportDirectory, fileName);
                 var bitmap = useBitmapRenderer
-                    ? _bitmapRenderer.Render(profile, profile, 1.0, 1.0, renderSize, 1.0)
+                    ? _bitmapRenderer.Render(profile.VisualisationData, 1.0, renderSize, 1.0).ToBitmapSource()
                     : RenderShapeBitmap(profile, renderSize);
 
                 SaveBitmap(filePath, bitmap);

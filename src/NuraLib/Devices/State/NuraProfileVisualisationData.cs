@@ -3,7 +3,7 @@ namespace NuraLib.Devices;
 /// <summary>
 /// Represents the raw hearing-profile visualisation data used by the official Nura renderers.
 /// </summary>
-public sealed record class NuraProfileVisualisationData {
+public record class NuraProfileVisualisationData {
     /// <summary>
     /// Gets a shared empty visualisation value.
     /// </summary>
