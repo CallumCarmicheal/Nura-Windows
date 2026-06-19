@@ -4,7 +4,8 @@
 
 ## Current architecture
 
-- `MainViewModel` owns the shell state: selected device, page navigation, authentication, export actions, profile animation, and window preferences.
+- `MainViewModel` owns the shell state: selected device, page navigation, authentication, export actions, profile animation, and UI app settings.
+- UI/app state is saved to `app-settings.json`; NuraLib auth/device state is saved separately to `nura-config.json`.
 - `NuraDeviceViewModel` wraps either a demo device or a live `ConnectedNuraDevice`.
 - Live device state is refreshed from SDK events and copied into bindable presentation properties.
 - Live WPF device wrappers subscribe to `ConnectedNuraDevice.Changed`; the fine-grained SDK events already raise `Changed`, so subscribing to both will duplicate UI refresh work.

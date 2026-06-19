@@ -4,23 +4,28 @@ namespace NuraPopupWpf.Bootstrap;
 
 public sealed record class PopupAppStoragePaths(
     string RootDirectory,
-    string WindowPreferencesPath,
-    string? NuraConfigPath
+    string AppSettingsPath,
+    string LegacyAppSettingsPath,
+    string LegacyWindowPreferencesPath,
+    string NuraConfigPath,
+    string LegacyNuraConfigPath
 ) {
     public static PopupAppStoragePaths Create(PopupAppBootstrapMode mode) {
-        var profileDirectoryName = mode == PopupAppBootstrapMode.Demo ? "demo" : "";
-        var rootDirectory = Path.Combine(
+        var appDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "NuraApp",
-            profileDirectoryName);
+            "NuraApp");
+        var rootDirectory = mode == PopupAppBootstrapMode.Demo
+            ? Path.Combine(appDirectory, "demo")
+            : appDirectory;
 
         Directory.CreateDirectory(rootDirectory);
 
         return new PopupAppStoragePaths(
             rootDirectory,
+            Path.Combine(rootDirectory, "app-settings.json"),
+            Path.Combine(rootDirectory, "ui-settings.json"),
             Path.Combine(rootDirectory, "window-preferences.json"),
-            mode == PopupAppBootstrapMode.Live
-                ? Path.Combine(rootDirectory, "nura-settings.json")
-                : null);
+            Path.Combine(appDirectory, "nura-config.json"),
+            Path.Combine(appDirectory, "nura-settings.json"));
     }
 }

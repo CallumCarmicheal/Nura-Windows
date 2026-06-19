@@ -1,8 +1,12 @@
 namespace NuraPopupWpf.Models;
 
-public sealed class WindowPreferences {
+public sealed class AppSettings {
     public bool AutoSetupDevices { get; set; } = true;
 
+    public AppPreferences Preferences { get; set; } = new();
+}
+
+public sealed class AppPreferences {
     public WindowAnchorMode AnchorMode { get; set; } = WindowAnchorMode.AnchorEdge;
 
     public WindowAnchorEdge AnchorEdge { get; set; } = WindowAnchorEdge.Center;

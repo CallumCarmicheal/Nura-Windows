@@ -24,14 +24,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
 
     private readonly NuraProfileRenderer _renderer = new();
     private readonly HearingProfileExportService _profileExportService = new();
-    private readonly WindowPreferencesService _windowPreferencesService;
+    private readonly AppSettingStore _appSettingsStore;
     private readonly ObservableCollection<string> _modes = new ObservableCollection<string>(new[] { "Neutral", "Personalised" });
     private readonly ObservableCollection<WindowAnchorOption> _windowAnchorOptions;
     private readonly ObservableCollection<WindowAnchorEdgeOption> _windowAnchorEdgeOptions;
     private readonly ObservableCollection<RememberExpandTypeOption> _rememberExpandTypeOptions;
     private readonly List<string> _devicePriorityIds = new();
     private readonly Stopwatch _animationStopwatch = new();
-    private readonly WindowPreferences _windowPreferences;
+    private readonly AppSettings _appSettings;
 
     private TimeSpan _animationDuration = TimeSpan.FromMilliseconds(420);
     private ProfileModel? _animationFromProfile;
@@ -73,8 +73,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     private RememberExpandTypeOption _selectedRememberExpandTypeOption = null!;
 
     private MainViewModel(PopupAppStoragePaths storagePaths) {
-        _windowPreferencesService = new WindowPreferencesService(storagePaths.WindowPreferencesPath);
-        _windowPreferences = _windowPreferencesService.Load();
+        _appSettingsStore = new AppSettingStore(
+            storagePaths.AppSettingsPath,
+            storagePaths.LegacyAppSettingsPath,
+            storagePaths.LegacyWindowPreferencesPath);
+        _appSettings = _appSettingsStore.Load();
         _windowAnchorOptions = new ObservableCollection<WindowAnchorOption>(BuildWindowAnchorOptions());
         _windowAnchorEdgeOptions = new ObservableCollection<WindowAnchorEdgeOption>(BuildWindowAnchorEdgeOptions());
         _rememberExpandTypeOptions = new ObservableCollection<RememberExpandTypeOption>(BuildRememberExpandTypeOptions());
@@ -86,9 +89,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         }
 
         InitializeEmptyCurrentSelection();
-        _selectedWindowAnchorOption = _windowAnchorOptions.FirstOrDefault(option => option.Mode == _windowPreferences.AnchorMode) ?? _windowAnchorOptions[0];
-        _selectedWindowAnchorEdgeOption = _windowAnchorEdgeOptions.FirstOrDefault(option => option.Edge == _windowPreferences.AnchorEdge) ?? _windowAnchorEdgeOptions.First(option => option.Edge == WindowAnchorEdge.Center);
-        _selectedRememberExpandTypeOption = _rememberExpandTypeOptions.FirstOrDefault(option => option.ExpandType == _windowPreferences.RememberExpandType) ?? _rememberExpandTypeOptions[0];
+        _selectedWindowAnchorOption = _windowAnchorOptions.FirstOrDefault(option => option.Mode == _appSettings.Preferences.AnchorMode) ?? _windowAnchorOptions[0];
+        _selectedWindowAnchorEdgeOption = _windowAnchorEdgeOptions.FirstOrDefault(option => option.Edge == _appSettings.Preferences.AnchorEdge) ?? _windowAnchorEdgeOptions.First(option => option.Edge == WindowAnchorEdge.Center);
+        _selectedRememberExpandTypeOption = _rememberExpandTypeOptions.FirstOrDefault(option => option.ExpandType == _appSettings.Preferences.RememberExpandType) ?? _rememberExpandTypeOptions[0];
 
         ToggleExpandedCommand = new RelayCommand(_ => IsExpanded = !IsExpanded);
         ShowDevicePageCommand = new RelayCommand(_ => IsDevicePage = true);
@@ -436,14 +439,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     }
 
     public bool AutoSetupDevices {
-        get => _windowPreferences.AutoSetupDevices;
+        get => _appSettings.AutoSetupDevices;
         set {
-            if (_windowPreferences.AutoSetupDevices == value) {
+            if (_appSettings.AutoSetupDevices == value) {
                 return;
             }
 
-            _windowPreferences.AutoSetupDevices = value;
-            SaveWindowPreferences();
+            _appSettings.AutoSetupDevices = value;
+            SaveAppSettings();
             OnPropertyChanged();
             OnPropertyChanged(nameof(AutoSetupDevicesSubtitle));
 
@@ -500,8 +503,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
                 return;
             }
 
-            _windowPreferences.AnchorMode = value.Mode;
-            SaveWindowPreferences();
+            _appSettings.Preferences.AnchorMode = value.Mode;
+            SaveAppSettings();
             NotifyWindowAnchorModeStateChanged();
         }
     }
@@ -515,8 +518,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
                 return;
             }
 
-            _windowPreferences.AnchorEdge = value.Edge;
-            SaveWindowPreferences();
+            _appSettings.Preferences.AnchorEdge = value.Edge;
+            SaveAppSettings();
             NotifyWindowAnchorEdgeStateChanged();
         }
     }
@@ -530,8 +533,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
                 return;
             }
 
-            _windowPreferences.RememberExpandType = value.ExpandType;
-            SaveWindowPreferences();
+            _appSettings.Preferences.RememberExpandType = value.ExpandType;
+            SaveAppSettings();
             NotifyRememberExpandTypeStateChanged();
         }
     }
@@ -949,8 +952,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     }
 
     public bool TryGetRememberedWindowPosition(out Point position) {
-        if (_windowPreferences.LastLeft.HasValue && _windowPreferences.LastTop.HasValue) {
-            position = new Point(_windowPreferences.LastLeft.Value, _windowPreferences.LastTop.Value);
+        if (_appSettings.Preferences.LastLeft.HasValue && _appSettings.Preferences.LastTop.HasValue) {
+            position = new Point(_appSettings.Preferences.LastLeft.Value, _appSettings.Preferences.LastTop.Value);
             return true;
         }
 
@@ -959,13 +962,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     }
 
     public void SaveRememberedWindowPosition(double left, double top) {
-        _windowPreferences.LastLeft = left;
-        _windowPreferences.LastTop = top;
-        SaveWindowPreferences();
+        _appSettings.Preferences.LastLeft = left;
+        _appSettings.Preferences.LastTop = top;
+        SaveAppSettings();
     }
 
-    private void SaveWindowPreferences() {
-        _windowPreferencesService.Save(_windowPreferences);
+    private void SaveAppSettings() {
+        _appSettingsStore.Save(_appSettings);
     }
 
     private void NotifyWindowAnchorModeStateChanged() {

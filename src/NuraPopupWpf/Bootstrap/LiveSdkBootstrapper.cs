@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 
 using NuraLib;
 using NuraLib.Configuration;
@@ -11,7 +12,7 @@ public sealed class LiveSdkBootstrapper : IPopupAppBootstrapper {
         cancellationToken.ThrowIfCancellationRequested();
 
         var storagePaths = PopupAppStoragePaths.Create(PopupAppBootstrapMode.Live);
-        var configPath = storagePaths.NuraConfigPath ?? throw new InvalidOperationException("Live mode requires a NuraLib configuration path.");
+        var configPath = ResolveNuraConfigPath(storagePaths);
         var config = NuraConfigStore.LoadOrCreate(configPath);
         var client = new NuraClient(new NuraConfigState(config));
         client.RequestStateSave += (_, _) => NuraConfigStore.Save(configPath, client.State.Configuration);
@@ -54,5 +55,18 @@ public sealed class LiveSdkBootstrapper : IPopupAppBootstrapper {
                     }
                 }
             });
+    }
+
+    private static string ResolveNuraConfigPath(PopupAppStoragePaths storagePaths) {
+        if (File.Exists(storagePaths.NuraConfigPath)) {
+            return storagePaths.NuraConfigPath;
+        }
+
+        if (File.Exists(storagePaths.LegacyNuraConfigPath)) {
+            var legacyConfig = NuraConfigStore.Load(storagePaths.LegacyNuraConfigPath);
+            NuraConfigStore.Save(storagePaths.NuraConfigPath, legacyConfig);
+        }
+
+        return storagePaths.NuraConfigPath;
     }
 }
