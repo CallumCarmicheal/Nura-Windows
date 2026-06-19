@@ -93,9 +93,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         ToggleExpandedCommand = new RelayCommand(_ => IsExpanded = !IsExpanded);
         ShowDevicePageCommand = new RelayCommand(_ => IsDevicePage = true);
         ShowSettingsPageCommand = new RelayCommand(_ => IsDevicePage = false);
-        SelectModeCommand = new RelayCommand(parameter => {
+        SelectModeCommand = new AsyncRelayCommand(async (parameter, _) => {
             if (parameter is string mode) {
-                SelectedMode = mode;
+                await ApplyPersonalisationModeAsync(mode == "Personalised");
             }
         });
         ToggleSerialVisibilityCommand = new RelayCommand(_ => {
@@ -120,6 +120,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
                 SelectedWindowAnchorEdgeOption = _windowAnchorEdgeOptions.First(option => option.Edge == edge);
             }
         });
+        ApplyImmersionCommand = new AsyncRelayCommand(async (_, _) => await ApplyImmersionAsync());
+        ToggleAncCommand = new AsyncRelayCommand(async (_, _) => await ToggleAncAsync());
+        TogglePassthroughCommand = new AsyncRelayCommand(async (_, _) => await TogglePassthroughAsync());
+        ToggleSpatialCommand = new AsyncRelayCommand(async (_, _) => await ToggleSpatialAsync());
+        ApplyAncLevelCommand = new AsyncRelayCommand(async (_, _) => await ApplyAncLevelAsync());
+        RefreshBatteryCommand = new AsyncRelayCommand(async (_, _) => await CurrentDevice.RefreshBatteryAsync());
+        ApplyTouchButtonsCommand = new AsyncRelayCommand(async (_, _) => await ApplyTouchButtonsAsync());
+        ResetTouchButtonsCommand = new RelayCommand(_ => ResetTouchButtonDraft());
+        ApplyDialCommand = new AsyncRelayCommand(async (_, _) => await ApplyDialAsync());
+        ResetDialCommand = new RelayCommand(_ => ResetDialDraft());
 
         InitializeRuntimeExtensions();
     }
@@ -147,6 +157,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     public ICommand SelectWindowAnchorEdgeCommand { get; }
 
     public ICommand SelectModeCommand { get; }
+
+    public ICommand ApplyImmersionCommand { get; }
+
+    public ICommand ToggleAncCommand { get; }
+
+    public ICommand TogglePassthroughCommand { get; }
+
+    public ICommand ToggleSpatialCommand { get; }
+
+    public ICommand ApplyAncLevelCommand { get; }
+
+    public ICommand RefreshBatteryCommand { get; }
+
+    public ICommand ApplyTouchButtonsCommand { get; }
+
+    public ICommand ResetTouchButtonsCommand { get; }
+
+    public ICommand ApplyDialCommand { get; }
+
+    public ICommand ResetDialCommand { get; }
 
     public ICommand ToggleSerialVisibilityCommand { get; }
 
@@ -245,6 +275,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             OnPropertyChanged(nameof(ShowDisconnectedDevicePlaceholder));
             OnPropertyChanged(nameof(ShowDisconnectedDeviceProfilePreview));
             OnPropertyChanged(nameof(CanInteractWithCurrentDeviceControls));
+            OnPropertyChanged(nameof(ShouldBlurCurrentDeviceControls));
+            OnPropertyChanged(nameof(CurrentDeviceReadinessText));
             OnPropertyChanged(nameof(DisconnectedDevicePreviewButtonText));
             IsCompactProfileSelectorOpen = false;
             IsDeviceDrawerOpen = false;
@@ -258,14 +290,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
 
             RefreshCurrentDeviceBindings();
             OnPropertyChanged(nameof(CurrentDeviceActionText));
+            OnPropertyChanged(nameof(CurrentDeviceReadinessText));
 
-            if (CurrentDevice.IsLive && CurrentDevice.IsConnected && CurrentDevice.CanUseLocalCommands) {
-                _ = CurrentDevice.EnsureReadyAsync(
-                    ConnectToNura,
-                    HasAuthenticatedWithNura,
-                    forceProvision: false,
-                    refreshAfterConnect: true);
-            }
+            ResetPendingDeviceEdits();
         }
     }
 
@@ -296,7 +323,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
                 }
             }
 
-            _ = CurrentDevice.SelectProfileByIndexAsync(profileId);
+            _ = ApplyCurrentProfileSelectionAsync(profileId);
         }
     }
 
@@ -312,28 +339,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
                 return;
             }
 
-            CurrentDevice.IsPersonalised = value;
-            OnPropertyChanged(nameof(SelectedMode));
-            OnPropertyChanged(nameof(IsPersonalised));
-            StartProfileAnimation(profileChanged: false, modeChanged: true);
+            _ = ApplyPersonalisationModeAsync(value);
         }
     }
 
     public int ImmersionIndex {
-        get => CurrentDevice.ImmersionIndex;
+        get => _pendingImmersionIndex ?? CurrentDevice.ImmersionIndex;
         set {
-            if (CurrentDevice.ImmersionIndex == value) {
+            if (ImmersionIndex == value) {
                 return;
             }
 
-            CurrentDevice.ImmersionIndex = value;
+            _pendingImmersionIndex = Math.Clamp(value, 0, 6);
             OnPropertyChanged(nameof(ImmersionIndex));
             OnPropertyChanged(nameof(CurrentImmersionValue));
+            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
+            OnPropertyChanged(nameof(HasPendingImmersionChange));
             UpdateProfileImage();
         }
     }
 
-    public int CurrentImmersionValue => CurrentDevice.CurrentImmersionValue;
+    public int CurrentImmersionValue => ImmersionValueFromIndex(ImmersionIndex);
 
     public int CurrentVisualImmersionValue => UseDisconnectedDeviceVisualDefaults ? 0 : CurrentImmersionValue;
 
@@ -388,6 +414,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             if (SetProperty(ref _showDisconnectedDeviceProfilePreview, value)) {
                 OnPropertyChanged(nameof(ShowDisconnectedDevicePlaceholder));
                 OnPropertyChanged(nameof(CanInteractWithCurrentDeviceControls));
+                OnPropertyChanged(nameof(ShouldBlurCurrentDeviceControls));
                 OnPropertyChanged(nameof(DisconnectedDevicePreviewButtonText));
                 OnPropertyChanged(nameof(CurrentVisualImmersionValue));
 
@@ -403,6 +430,29 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         set {
             if (SetProperty(ref _connectToNura, value)) {
                 UpdateAllDeviceAuthContexts();
+                _ = TryAutoSetupLiveDevicesAsync(CancellationToken.None);
+            }
+        }
+    }
+
+    public bool AutoSetupDevices {
+        get => _windowPreferences.AutoSetupDevices;
+        set {
+            if (_windowPreferences.AutoSetupDevices == value) {
+                return;
+            }
+
+            _windowPreferences.AutoSetupDevices = value;
+            SaveWindowPreferences();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AutoSetupDevicesSubtitle));
+
+            if (value) {
+                foreach (var device in Devices.Where(device => device.IsLive)) {
+                    device.ResetAutoSetupFailure();
+                }
+
+                _ = TryAutoSetupLiveDevicesAsync(CancellationToken.None);
             }
         }
     }
@@ -414,6 +464,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
 
     public string ConnectToNuraSubtitle => "Devices on the nura-now subscription would need to phone home roughly every 30 days, enable this if you need to stop your device from locking.";
 
+    public string AutoSetupDevicesSubtitle => AutoSetupDevices
+        ? "Recommended. Newly detected devices are provisioned when allowed, connected locally, refreshed, and monitored automatically."
+        : "Devices will be discovered only. Use Connect or Provision before changing live controls.";
+
     public bool HasAuthenticatedWithNura {
         get => _hasAuthenticatedWithNura;
         private set {
@@ -421,6 +475,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
                 OnPropertyChanged(nameof(AccountNameDisplay));
                 OnPropertyChanged(nameof(AccountEmailDisplay));
                 UpdateAllDeviceAuthContexts();
+                _ = TryAutoSetupLiveDevicesAsync(CancellationToken.None);
             }
         }
     }
@@ -529,7 +584,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
 
     public bool ShowDisconnectedDevicePlaceholder => IsCurrentDeviceDisconnected && !ShowDisconnectedDeviceProfilePreview;
 
-    public bool CanInteractWithCurrentDeviceControls => CurrentDevice.IsConnected && !CurrentDevice.IsBusy;
+    public bool CanInteractWithCurrentDeviceControls => CurrentDevice.CanUseFeatureControls;
+
+    public bool ShouldBlurCurrentDeviceControls => !CanInteractWithCurrentDeviceControls;
+
+    public string CurrentDeviceReadinessText => CurrentDevice.ReadinessStatusText;
 
     public string DisconnectedDevicePreviewButtonText => ShowDisconnectedDeviceProfilePreview
         ? "Show disconnected artwork"
@@ -620,6 +679,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             OnPropertyChanged(nameof(ShowDisconnectedDevicePlaceholder));
             OnPropertyChanged(nameof(ShowDisconnectedDeviceProfilePreview));
             OnPropertyChanged(nameof(CanInteractWithCurrentDeviceControls));
+            OnPropertyChanged(nameof(ShouldBlurCurrentDeviceControls));
             OnPropertyChanged(nameof(DisconnectedDevicePreviewButtonText));
             OnPropertyChanged(nameof(CurrentVisualImmersionValue));
 
@@ -671,7 +731,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             nameof(DeviceModel.SupportsTouchButtons) or
             nameof(DeviceModel.SupportsDial) or
             nameof(DeviceModel.SupportsEuVolumeLimiter) or
+            nameof(NuraDeviceViewModel.HasLocalSession) or
+            nameof(NuraDeviceViewModel.IsMonitoring) or
+            nameof(NuraDeviceViewModel.CanUseFeatureControls) or
             nameof(NuraDeviceViewModel.RequiresProvisioning) or
+            nameof(NuraDeviceViewModel.ReadinessStatusText) or
             nameof(NuraDeviceViewModel.OperationStatusText) or
             nameof(NuraDeviceViewModel.IsBusy)) {
             RefreshCurrentDeviceBindings();
@@ -831,7 +895,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             try {
                 AuthenticationStatusText = "Verifying your login code.";
                 await _client.Auth.VerifyEmailCodeAsync(AuthenticationCode, AuthenticationEmail);
-                await RefreshDevicesAsync();
             } catch (Exception ex) {
                 AuthenticationStatusText = $"Verification failed. {ex.Message}";
                 return;
@@ -843,6 +906,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         IsAuthenticationCodeStep = false;
         HasCompletedAuthenticationGate = true;
         AuthenticationStatusText = $"Connected to Nura as {AuthenticationEmail}.";
+
+        if (_client is not null) {
+            await RefreshDevicesAsync();
+        }
     }
 
     private void BackToAuthenticationEmail() {

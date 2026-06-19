@@ -62,10 +62,10 @@ public sealed partial class MainViewModel {
     public bool ShowCurrentDeviceActionPanel => CurrentDevice.IsLive;
 
     private void InitializeRuntimeExtensions() {
-        RefreshDevicesCommand = new RelayCommand(async _ => await RefreshDevicesAsync());
-        RefreshCurrentDeviceCommand = new RelayCommand(async _ => await RefreshCurrentDeviceAsync());
-        ConnectCurrentDeviceCommand = new RelayCommand(async _ => await ConnectCurrentDeviceAsync());
-        ProvisionCurrentDeviceCommand = new RelayCommand(async _ => await ProvisionCurrentDeviceAsync());
+        RefreshDevicesCommand = new AsyncRelayCommand(async (_, _) => await RefreshDevicesAsync());
+        RefreshCurrentDeviceCommand = new AsyncRelayCommand(async (_, _) => await RefreshCurrentDeviceAsync());
+        ConnectCurrentDeviceCommand = new AsyncRelayCommand(async (_, _) => await ConnectCurrentDeviceAsync());
+        ProvisionCurrentDeviceCommand = new AsyncRelayCommand(async (_, _) => await ProvisionCurrentDeviceAsync());
         RefreshCurrentDeviceBindings();
         OnPropertyChanged(nameof(CurrentDeviceActionText));
     }
@@ -94,6 +94,10 @@ public sealed partial class MainViewModel {
         }
 
         await SyncDevicesFromClientAsync(preferFirstConnectedDevice: true, cancellationToken);
+    }
+
+    public Task SyncLiveDevicesFromClientAsync(bool preferFirstConnectedDevice, CancellationToken cancellationToken = default) {
+        return SyncDevicesFromClientAsync(preferFirstConnectedDevice, cancellationToken);
     }
 
     public async ValueTask DisposeAsync() {
@@ -213,6 +217,7 @@ public sealed partial class MainViewModel {
 
         RaiseDeviceListPropertiesChanged();
 
+        await TryAutoSetupLiveDevicesAsync(cancellationToken);
     }
 
     private void RegisterDeviceModel(NuraDeviceViewModel device) {
@@ -228,6 +233,30 @@ public sealed partial class MainViewModel {
         }
 
         RefreshCurrentDeviceBindings();
+    }
+
+    private async Task TryAutoSetupLiveDevicesAsync(CancellationToken cancellationToken) {
+        if (!AutoSetupDevices) {
+            return;
+        }
+
+        try {
+            var liveDevices = Devices
+                .Where(device => device.IsLive && device.IsConnected)
+                .ToList();
+
+            foreach (var device in liveDevices) {
+                cancellationToken.ThrowIfCancellationRequested();
+                await device.TryAutoSetupAsync(ConnectToNura, HasAuthenticatedWithNura, cancellationToken);
+            }
+
+            RefreshCurrentDeviceBindings();
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+        } catch (Exception ex) {
+            if (CurrentDevice.IsLive) {
+                CurrentDevice.WarningText = ex.Message;
+            }
+        }
     }
 
     private void AttachClientEvents() {

@@ -4,6 +4,11 @@ using NuraPopupWpf.Models;
 namespace NuraPopupWpf.ViewModels;
 
 public sealed partial class MainViewModel {
+    private int? _pendingImmersionIndex;
+    private int? _pendingAncLevelValue;
+    private NuraButtonConfiguration? _pendingTouchButtons;
+    private NuraDialConfiguration? _pendingDial;
+
     public bool ShowAncControl => CurrentDevice.SupportsAnc;
 
     public bool ShowPassthroughControl =>
@@ -28,70 +33,93 @@ public sealed partial class MainViewModel {
 
     public bool CanChangeImmersionControl => CurrentDevice.CanChangeImmersionControl;
 
+    public bool HasPendingImmersionChange => _pendingImmersionIndex.HasValue && _pendingImmersionIndex.Value != CurrentDevice.ImmersionIndex;
+
     public int CurrentAncLevelValue {
-        get => CurrentDevice.AncLevel ?? 0;
+        get => _pendingAncLevelValue ?? CurrentDevice.AncLevel ?? 0;
         set {
-            if (CurrentDevice.AncLevel == value) {
+            var nextValue = Math.Clamp(value, 0, 4);
+            if (CurrentAncLevelValue == nextValue) {
                 return;
             }
 
-            CurrentDevice.AncLevel = value;
+            _pendingAncLevelValue = nextValue;
             OnPropertyChanged(nameof(CurrentAncLevelValue));
             OnPropertyChanged(nameof(CurrentAncLevelText));
+            OnPropertyChanged(nameof(HasPendingAncLevelChange));
         }
     }
 
-    public string CurrentAncLevelText => CurrentDevice.AncLevel?.ToString() ?? "Unknown";
+    public bool HasPendingAncLevelChange =>
+        _pendingAncLevelValue.HasValue &&
+        _pendingAncLevelValue.Value != (CurrentDevice.AncLevel ?? 0);
+
+    public string CurrentAncLevelText {
+        get {
+            var value = CurrentAncLevelValue;
+            return HasPendingAncLevelChange
+                ? $"{value} pending"
+                : CurrentDevice.AncLevel?.ToString() ?? "Unknown";
+        }
+    }
 
     public ButtonFunctionOption? SelectedLeftSingleTapButtonFunction {
-        get => FindButtonFunctionOption(SingleTapButtonOptions, CurrentDevice.TouchButtons?.LeftSingleTap);
+        get => FindButtonFunctionOption(SingleTapButtonOptions, CurrentTouchButtonDraft.LeftSingleTap);
         set => SetTouchButtonBinding(NuraButtonSide.Left, NuraButtonGesture.SingleTap, value?.Value);
     }
 
     public ButtonFunctionOption? SelectedRightSingleTapButtonFunction {
-        get => FindButtonFunctionOption(SingleTapButtonOptions, CurrentDevice.TouchButtons?.RightSingleTap);
+        get => FindButtonFunctionOption(SingleTapButtonOptions, CurrentTouchButtonDraft.RightSingleTap);
         set => SetTouchButtonBinding(NuraButtonSide.Right, NuraButtonGesture.SingleTap, value?.Value);
     }
 
     public ButtonFunctionOption? SelectedLeftDoubleTapButtonFunction {
-        get => FindButtonFunctionOption(DoubleTapButtonOptions, CurrentDevice.TouchButtons?.LeftDoubleTap);
+        get => FindButtonFunctionOption(DoubleTapButtonOptions, CurrentTouchButtonDraft.LeftDoubleTap);
         set => SetTouchButtonBinding(NuraButtonSide.Left, NuraButtonGesture.DoubleTap, value?.Value);
     }
 
     public ButtonFunctionOption? SelectedRightDoubleTapButtonFunction {
-        get => FindButtonFunctionOption(DoubleTapButtonOptions, CurrentDevice.TouchButtons?.RightDoubleTap);
+        get => FindButtonFunctionOption(DoubleTapButtonOptions, CurrentTouchButtonDraft.RightDoubleTap);
         set => SetTouchButtonBinding(NuraButtonSide.Right, NuraButtonGesture.DoubleTap, value?.Value);
     }
 
     public ButtonFunctionOption? SelectedLeftTripleTapButtonFunction {
-        get => FindButtonFunctionOption(TripleTapButtonOptions, CurrentDevice.TouchButtons?.LeftTripleTap);
+        get => FindButtonFunctionOption(TripleTapButtonOptions, CurrentTouchButtonDraft.LeftTripleTap);
         set => SetTouchButtonBinding(NuraButtonSide.Left, NuraButtonGesture.TripleTap, value?.Value);
     }
 
     public ButtonFunctionOption? SelectedRightTripleTapButtonFunction {
-        get => FindButtonFunctionOption(TripleTapButtonOptions, CurrentDevice.TouchButtons?.RightTripleTap);
+        get => FindButtonFunctionOption(TripleTapButtonOptions, CurrentTouchButtonDraft.RightTripleTap);
         set => SetTouchButtonBinding(NuraButtonSide.Right, NuraButtonGesture.TripleTap, value?.Value);
     }
 
     public ButtonFunctionOption? SelectedLeftTapAndHoldButtonFunction {
-        get => FindButtonFunctionOption(TapAndHoldButtonOptions, CurrentDevice.TouchButtons?.LeftTapAndHold);
+        get => FindButtonFunctionOption(TapAndHoldButtonOptions, CurrentTouchButtonDraft.LeftTapAndHold);
         set => SetTouchButtonBinding(NuraButtonSide.Left, NuraButtonGesture.TapAndHold, value?.Value);
     }
 
     public ButtonFunctionOption? SelectedRightTapAndHoldButtonFunction {
-        get => FindButtonFunctionOption(TapAndHoldButtonOptions, CurrentDevice.TouchButtons?.RightTapAndHold);
+        get => FindButtonFunctionOption(TapAndHoldButtonOptions, CurrentTouchButtonDraft.RightTapAndHold);
         set => SetTouchButtonBinding(NuraButtonSide.Right, NuraButtonGesture.TapAndHold, value?.Value);
     }
 
     public DialFunctionOption? SelectedLeftDialFunction {
-        get => FindDialFunctionOption(CurrentDevice.Dial?.Left ?? NuraDialFunction.None);
+        get => FindDialFunctionOption(CurrentDialDraft.Left);
         set => SetDialFunction(NuraDialSide.Left, value?.Value ?? NuraDialFunction.None);
     }
 
     public DialFunctionOption? SelectedRightDialFunction {
-        get => FindDialFunctionOption(CurrentDevice.Dial?.Right ?? NuraDialFunction.None);
+        get => FindDialFunctionOption(CurrentDialDraft.Right);
         set => SetDialFunction(NuraDialSide.Right, value?.Value ?? NuraDialFunction.None);
     }
+
+    public bool HasPendingTouchButtonChanges =>
+        _pendingTouchButtons is not null &&
+        !Equals(_pendingTouchButtons, CurrentDevice.TouchButtons ?? new NuraButtonConfiguration());
+
+    public bool HasPendingDialChanges =>
+        _pendingDial is not null &&
+        !Equals(_pendingDial, CurrentDevice.Dial ?? new NuraDialConfiguration());
 
     private void RefreshCurrentDeviceBindings() {
         OnPropertyChanged(nameof(CurrentProfiles));
@@ -110,8 +138,10 @@ public sealed partial class MainViewModel {
         OnPropertyChanged(nameof(ShowDisconnectedDevicePlaceholder));
         OnPropertyChanged(nameof(ShowDisconnectedDeviceProfilePreview));
         OnPropertyChanged(nameof(CanInteractWithCurrentDeviceControls));
+        OnPropertyChanged(nameof(ShouldBlurCurrentDeviceControls));
         OnPropertyChanged(nameof(ShowCurrentDeviceActionPanel));
         OnPropertyChanged(nameof(CurrentDeviceActionText));
+        OnPropertyChanged(nameof(CurrentDeviceReadinessText));
         OnPropertyChanged(nameof(ShowAncControl));
         OnPropertyChanged(nameof(ShowPassthroughControl));
         OnPropertyChanged(nameof(ShowAncLevelControl));
@@ -125,6 +155,10 @@ public sealed partial class MainViewModel {
         OnPropertyChanged(nameof(CanChangeImmersionControl));
         OnPropertyChanged(nameof(CurrentAncLevelValue));
         OnPropertyChanged(nameof(CurrentAncLevelText));
+        OnPropertyChanged(nameof(HasPendingImmersionChange));
+        OnPropertyChanged(nameof(HasPendingAncLevelChange));
+        OnPropertyChanged(nameof(HasPendingTouchButtonChanges));
+        OnPropertyChanged(nameof(HasPendingDialChanges));
 
         RefreshInteractionOptionSets();
         RaiseInteractionSelectionPropertiesChanged();
@@ -149,7 +183,107 @@ public sealed partial class MainViewModel {
         OnPropertyChanged(nameof(SelectedRightTapAndHoldButtonFunction));
         OnPropertyChanged(nameof(SelectedLeftDialFunction));
         OnPropertyChanged(nameof(SelectedRightDialFunction));
+        OnPropertyChanged(nameof(HasPendingTouchButtonChanges));
+        OnPropertyChanged(nameof(HasPendingDialChanges));
     }
+
+    private NuraButtonConfiguration CurrentTouchButtonDraft =>
+        _pendingTouchButtons ?? CurrentDevice.TouchButtons ?? new NuraButtonConfiguration();
+
+    private NuraDialConfiguration CurrentDialDraft =>
+        _pendingDial ?? CurrentDevice.Dial ?? new NuraDialConfiguration();
+
+    private async Task ApplyPersonalisationModeAsync(bool isPersonalised) {
+        if (CurrentDevice.IsPersonalised == isPersonalised) {
+            return;
+        }
+
+        await CurrentDevice.ApplyPersonalisationAsync(isPersonalised);
+        OnPropertyChanged(nameof(SelectedMode));
+        OnPropertyChanged(nameof(IsPersonalised));
+        StartProfileAnimation(profileChanged: false, modeChanged: true);
+        RefreshCurrentDeviceBindings();
+    }
+
+    private async Task ApplyCurrentProfileSelectionAsync(int profileId) {
+        await CurrentDevice.SelectProfileByIndexAsync(profileId);
+        RefreshCurrentDeviceBindings();
+    }
+
+    private async Task ApplyImmersionAsync() {
+        var targetIndex = ImmersionIndex;
+        await CurrentDevice.ApplyImmersionIndexAsync(targetIndex);
+        _pendingImmersionIndex = null;
+        OnPropertyChanged(nameof(ImmersionIndex));
+        OnPropertyChanged(nameof(CurrentImmersionValue));
+        OnPropertyChanged(nameof(CurrentVisualImmersionValue));
+        OnPropertyChanged(nameof(HasPendingImmersionChange));
+        UpdateProfileImage();
+    }
+
+    private async Task ToggleAncAsync() {
+        await CurrentDevice.ApplyAncEnabledAsync(!CurrentDevice.AncEnabled);
+        RefreshCurrentDeviceBindings();
+    }
+
+    private async Task TogglePassthroughAsync() {
+        await CurrentDevice.ApplyPassthroughEnabledAsync(!CurrentDevice.SocialMode);
+        RefreshCurrentDeviceBindings();
+    }
+
+    private async Task ToggleSpatialAsync() {
+        await CurrentDevice.ApplySpatialEnabledAsync(!CurrentDevice.SpatialEnabled);
+        RefreshCurrentDeviceBindings();
+    }
+
+    private async Task ApplyAncLevelAsync() {
+        await CurrentDevice.ApplyAncLevelAsync(CurrentAncLevelValue);
+        _pendingAncLevelValue = null;
+        OnPropertyChanged(nameof(CurrentAncLevelValue));
+        OnPropertyChanged(nameof(CurrentAncLevelText));
+        OnPropertyChanged(nameof(HasPendingAncLevelChange));
+    }
+
+    private async Task ApplyTouchButtonsAsync() {
+        if (!HasPendingTouchButtonChanges) {
+            return;
+        }
+
+        await CurrentDevice.ApplyTouchButtonsAsync(CurrentTouchButtonDraft);
+        _pendingTouchButtons = null;
+        RaiseInteractionSelectionPropertiesChanged();
+    }
+
+    private async Task ApplyDialAsync() {
+        if (!HasPendingDialChanges) {
+            return;
+        }
+
+        await CurrentDevice.ApplyDialAsync(CurrentDialDraft);
+        _pendingDial = null;
+        RaiseInteractionSelectionPropertiesChanged();
+    }
+
+    private void ResetTouchButtonDraft() {
+        _pendingTouchButtons = null;
+        RaiseInteractionSelectionPropertiesChanged();
+    }
+
+    private void ResetDialDraft() {
+        _pendingDial = null;
+        RaiseInteractionSelectionPropertiesChanged();
+    }
+
+    private void ResetPendingDeviceEdits() {
+        _pendingImmersionIndex = null;
+        _pendingAncLevelValue = null;
+        _pendingTouchButtons = null;
+        _pendingDial = null;
+        RefreshCurrentDeviceBindings();
+    }
+
+    private static int ImmersionValueFromIndex(int immersionIndex) =>
+        new[] { -2, -1, 0, 1, 2, 3, 4 }[Math.Clamp(immersionIndex, 0, 6)];
 
     private IReadOnlyList<ButtonFunctionOption> BuildButtonFunctionOptions(NuraButtonGesture gesture) {
         if (!CurrentDevice.SupportsTouchButtons || !CurrentDevice.SupportsGesture(gesture)) {
@@ -221,13 +355,13 @@ public sealed partial class MainViewModel {
             return;
         }
 
-        var currentConfiguration = CurrentDevice.TouchButtons ?? new NuraButtonConfiguration();
+        var currentConfiguration = CurrentTouchButtonDraft;
         var nextConfiguration = currentConfiguration.WithBinding(side, gesture, function ?? NuraButtonFunction.None);
         if (Equals(currentConfiguration, nextConfiguration)) {
             return;
         }
 
-        CurrentDevice.TouchButtons = nextConfiguration;
+        _pendingTouchButtons = nextConfiguration;
         RaiseInteractionSelectionPropertiesChanged();
     }
 
@@ -236,13 +370,13 @@ public sealed partial class MainViewModel {
             return;
         }
 
-        var currentConfiguration = CurrentDevice.Dial ?? new NuraDialConfiguration();
+        var currentConfiguration = CurrentDialDraft;
         var nextConfiguration = currentConfiguration.WithBinding(side, function);
         if (Equals(currentConfiguration, nextConfiguration)) {
             return;
         }
 
-        CurrentDevice.Dial = nextConfiguration;
+        _pendingDial = nextConfiguration;
         RaiseInteractionSelectionPropertiesChanged();
     }
 

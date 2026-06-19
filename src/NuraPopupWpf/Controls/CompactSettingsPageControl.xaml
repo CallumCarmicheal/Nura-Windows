@@ -124,6 +124,21 @@
                                       Style="{StaticResource SwitchToggleButtonStyle}" />
                     </Grid>
                 </Border>
+                <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,10,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Auto setup devices" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="{Binding AutoSetupDevicesSubtitle}" Foreground="White" FontSize="13" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1"
+                                      IsChecked="{Binding AutoSetupDevices, Mode=TwoWay}"
+                                      Style="{StaticResource SwitchToggleButtonStyle}" />
+                    </Grid>
+                </Border>
                 <TextBlock Text="USER INTERFACE" Style="{StaticResource SectionTitleStyle}" Margin="0,16,0,0" />
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,12,0,0">
                     <StackPanel>
@@ -723,9 +738,8 @@
                             <Setter Property="Opacity" Value="1" />
                             <Setter Property="IsEnabled" Value="True" />
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding CanInteractWithCurrentDeviceControls}" Value="False">
+                                <DataTrigger Binding="{Binding ShouldBlurCurrentDeviceControls}" Value="True">
                                     <Setter Property="Opacity" Value="0.4" />
-                                    <Setter Property="IsEnabled" Value="False" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -734,6 +748,7 @@
                             Visibility="{Binding ShowCurrentDeviceActionPanel, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel>
                             <TextBlock Text="LIVE CONTROL" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
+                            <TextBlock Text="{Binding CurrentDeviceReadinessText}" Foreground="#D9FFFFFF" FontSize="13" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding CurrentDeviceActionText}" Foreground="White" FontSize="13" TextWrapping="Wrap" />
                             <WrapPanel Margin="0,10,0,0">
                                 <Button Command="{Binding RefreshDevicesCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,8">
@@ -744,6 +759,9 @@
                                 </Button>
                                 <Button Command="{Binding RefreshCurrentDeviceCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,8">
                                     <TextBlock Text="Refresh state" Foreground="White" />
+                                </Button>
+                                <Button Command="{Binding RefreshBatteryCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,8">
+                                    <TextBlock Text="Battery" Foreground="White" />
                                 </Button>
                                 <Button Command="{Binding ProvisionCurrentDeviceCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,8">
                                     <TextBlock Text="Provision" Foreground="White" />
@@ -763,7 +781,8 @@
                                 <TextBlock Text="{Binding CurrentDevice.AncStatusText}" Foreground="White" FontSize="13" d:Text="..." />
                             </StackPanel>
                             <ToggleButton Grid.Column="1"
-                                          IsChecked="{Binding CurrentDevice.AncEnabled, Mode=TwoWay}"
+                                          Command="{Binding ToggleAncCommand}"
+                                          IsChecked="{Binding CurrentDevice.AncEnabled, Mode=OneWay}"
                                           Style="{StaticResource SwitchToggleButtonStyle}" />
                         </Grid>
                     </Border>
@@ -779,7 +798,8 @@
                                 <TextBlock Text="{Binding CurrentDevice.SocialModeText}" Foreground="White" FontSize="13" />
                             </StackPanel>
                             <ToggleButton Grid.Column="1"
-                                          IsChecked="{Binding CurrentDevice.SocialMode, Mode=TwoWay}"
+                                          Command="{Binding TogglePassthroughCommand}"
+                                          IsChecked="{Binding CurrentDevice.SocialMode, Mode=OneWay}"
                                           Style="{StaticResource SwitchToggleButtonStyle}" />
                         </Grid>
                     </Border>
@@ -794,6 +814,13 @@
                                     IsSnapToTickEnabled="True"
                                     Value="{Binding CurrentAncLevelValue, Mode=TwoWay}"
                                     Margin="0,10,0,0" />
+                            <Button Command="{Binding ApplyAncLevelCommand}"
+                                    Style="{StaticResource ValuePillButtonStyle}"
+                                    Padding="12,6"
+                                    Margin="0,10,0,0"
+                                    HorizontalAlignment="Right">
+                                <TextBlock Text="Apply ANC level" Foreground="White" />
+                            </Button>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
@@ -808,7 +835,8 @@
                                 <TextBlock Text="Toggle immersive spatial processing" Foreground="White" FontSize="13" />
                             </StackPanel>
                             <ToggleButton Grid.Column="1"
-                                          IsChecked="{Binding CurrentDevice.SpatialEnabled, Mode=TwoWay}"
+                                          Command="{Binding ToggleSpatialCommand}"
+                                          IsChecked="{Binding CurrentDevice.SpatialEnabled, Mode=OneWay}"
                                           Style="{StaticResource SwitchToggleButtonStyle}" />
                         </Grid>
                     </Border>
@@ -839,6 +867,14 @@
                                 <TextBlock Text="Right tap and hold" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
                                 <ComboBox ItemsSource="{Binding TapAndHoldButtonOptions}" SelectedItem="{Binding SelectedRightTapAndHoldButtonFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
                             </StackPanel>
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button Command="{Binding ApplyTouchButtonsCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,0">
+                                    <TextBlock Text="Apply buttons" Foreground="White" />
+                                </Button>
+                                <Button Command="{Binding ResetTouchButtonsCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6">
+                                    <TextBlock Text="Reset" Foreground="White" />
+                                </Button>
+                            </WrapPanel>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
@@ -846,12 +882,20 @@
                         <StackPanel>
                             <TextBlock Text="Dial bindings" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
                             <TextBlock Text="Available on supported NuraLoop-family devices." Foreground="White" FontSize="13" Margin="0,2,0,0" />
-                            <TextBlock Text="Left dial" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,10,0,0" />
-                            <ComboBox ItemsSource="{Binding DialFunctionOptions}" SelectedItem="{Binding SelectedLeftDialFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
-                            <TextBlock Text="Right dial" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
-                            <ComboBox ItemsSource="{Binding DialFunctionOptions}" SelectedItem="{Binding SelectedRightDialFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
-                        </StackPanel>
-                    </Border>
+                        <TextBlock Text="Left dial" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,10,0,0" />
+                        <ComboBox ItemsSource="{Binding DialFunctionOptions}" SelectedItem="{Binding SelectedLeftDialFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                        <TextBlock Text="Right dial" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,8,0,0" />
+                        <ComboBox ItemsSource="{Binding DialFunctionOptions}" SelectedItem="{Binding SelectedRightDialFunction, Mode=TwoWay}" DisplayMemberPath="Label" Style="{StaticResource SettingsComboBoxStyle}" />
+                        <WrapPanel Margin="0,12,0,0">
+                            <Button Command="{Binding ApplyDialCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6" Margin="0,0,8,0">
+                                <TextBlock Text="Apply dial" Foreground="White" />
+                            </Button>
+                            <Button Command="{Binding ResetDialCommand}" Style="{StaticResource ValuePillButtonStyle}" Padding="12,6">
+                                <TextBlock Text="Reset" Foreground="White" />
+                            </Button>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
                     <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,0,0,10"
                             Visibility="{Binding ShowEuVolumeLimiterControl, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid>

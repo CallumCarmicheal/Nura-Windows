@@ -193,6 +193,35 @@
                                    LineHeight="20"
                                    TextWrapping="Wrap" />
 
+                        <Border Margin="0,18,0,0"
+                                Padding="16"
+                                Background="#10FFFFFF"
+                                BorderBrush="#20FFFFFF"
+                                BorderThickness="1"
+                                CornerRadius="22">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Automatically set up new devices"
+                                               Foreground="{StaticResource SubtleTextBrush}"
+                                               FontSize="13" />
+                                    <TextBlock Text="{Binding AutoSetupDevicesSubtitle}"
+                                               Foreground="White"
+                                               FontSize="13"
+                                               LineHeight="19"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1"
+                                              Margin="14,0,0,0"
+                                              VerticalAlignment="Center"
+                                              IsChecked="{Binding AutoSetupDevices, Mode=TwoWay}"
+                                              Style="{StaticResource SwitchToggleButtonStyle}" />
+                            </Grid>
+                        </Border>
+
                         <Button Margin="0,30,0,0"
                                 Command="{Binding SubmitAuthenticationEmailCommand}"
                                 Style="{StaticResource AuthenticationPrimaryButtonStyle}">

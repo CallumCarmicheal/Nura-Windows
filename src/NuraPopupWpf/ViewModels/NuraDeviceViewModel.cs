@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Threading;
@@ -16,13 +15,15 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private readonly IReadOnlyList<ProfileModel> _fallbackProfiles;
     private readonly NuraProfileRenderer _renderer = new();
     private readonly SemaphoreSlim _operationGate = new(1, 1);
-    private bool _isApplyingSdkUpdate;
     private bool _connectToNura;
     private bool _hasAuthenticatedWithNura;
     private bool _isBusy;
+    private bool _isAutoSetupInProgress;
+    private bool _autoSetupFailed;
     private bool _hasLocalSession;
     private bool _isMonitoring;
     private bool _requiresProvisioning;
+    private string? _lastAutoSetupFailureKey;
     private string _provisionDisabledReason = string.Empty;
     private string _operationStatusText = string.Empty;
     private string _operationStageCode = string.Empty;
@@ -59,7 +60,6 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             warningText,
             liveDevice) {
         _fallbackProfiles = fallbackProfiles;
-        PropertyChanged += OnViewModelPropertyChanged;
         OperationStatusText = IsLive ? ConnectionStatusText : "Demo device ready.";
     }
 
@@ -125,20 +125,40 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             if (SetProperty(ref _isBusy, value)) {
                 OnPropertyChanged(nameof(CanProvision));
                 OnPropertyChanged(nameof(CanInteract));
+                OnPropertyChanged(nameof(CanUseFeatureControls));
+                OnPropertyChanged(nameof(ReadinessStatusText));
             }
         }
     }
 
     public bool CanInteract => IsConnected && !IsBusy;
 
+    public bool IsAutoSetupInProgress {
+        get => _isAutoSetupInProgress;
+        private set {
+            if (SetProperty(ref _isAutoSetupInProgress, value)) {
+                OnPropertyChanged(nameof(ReadinessStatusText));
+            }
+        }
+    }
+
     public bool HasLocalSession {
         get => _hasLocalSession;
-        private set => SetProperty(ref _hasLocalSession, value);
+        private set {
+            if (SetProperty(ref _hasLocalSession, value)) {
+                OnPropertyChanged(nameof(CanUseFeatureControls));
+                OnPropertyChanged(nameof(ReadinessStatusText));
+            }
+        }
     }
 
     public bool IsMonitoring {
         get => _isMonitoring;
-        private set => SetProperty(ref _isMonitoring, value);
+        private set {
+            if (SetProperty(ref _isMonitoring, value)) {
+                OnPropertyChanged(nameof(ReadinessStatusText));
+            }
+        }
     }
 
     public bool RequiresProvisioning {
@@ -147,6 +167,8 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             if (SetProperty(ref _requiresProvisioning, value)) {
                 RefreshWarningState();
                 OnPropertyChanged(nameof(CanProvision));
+                OnPropertyChanged(nameof(CanUseFeatureControls));
+                OnPropertyChanged(nameof(ReadinessStatusText));
             }
         }
     }
@@ -178,18 +200,95 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
                     LiveDevice.IsConnected &&
                     LiveDevice.HasPersistentDeviceKey);
 
+    public bool CanUseFeatureControls =>
+        !IsLive || (CanUseLocalCommands && HasLocalSession && !IsBusy && !RequiresProvisioning);
+
+    public string ReadinessStatusText {
+        get {
+            if (!IsLive) {
+                return "Demo device";
+            }
+
+            if (!IsConnected) {
+                return "Disconnected";
+            }
+
+            if (IsAutoSetupInProgress) {
+                return "Automatic setup running";
+            }
+
+            if (IsBusy) {
+                return "Working";
+            }
+
+            if (_autoSetupFailed) {
+                return "Automatic setup failed";
+            }
+
+            if (RequiresProvisioning) {
+                return !_connectToNura || !_hasAuthenticatedWithNura
+                    ? "Needs Nura login for provisioning"
+                    : "Needs provisioning";
+            }
+
+            if (!HasLocalSession) {
+                return "Discovered, local session not open";
+            }
+
+            return IsMonitoring ? "Ready and monitoring" : "Local session ready";
+        }
+    }
+
     public bool SupportsGesture(NuraButtonGesture gesture) {
         return LiveDevice?.Info.SupportsButtonGesture(gesture) ?? gesture is not NuraButtonGesture.TripleTap;
     }
 
     public int? CurrentProfileId => LiveDevice?.Profiles.ProfileId;
 
+    public string DeviceFamilyText =>
+        LiveDevice is null
+            ? "Demo"
+            : NuraDeviceCapabilities.GetDebugName(LiveDevice.Info.DeviceType);
+
+    public string DeviceCapabilitySummary {
+        get {
+            if (LiveDevice is null) {
+                return "Demo controls";
+            }
+
+            var chips = new List<string>();
+            if (LiveDevice.Info.IsTws) chips.Add("TWS");
+            if (LiveDevice.Info.Supports(NuraAudioCapabilities.Anc)) chips.Add("ANC");
+            if (LiveDevice.Info.Supports(NuraAudioCapabilities.AncLevel)) chips.Add("ANC level");
+            if (LiveDevice.Info.Supports(NuraAudioCapabilities.Immersion)) chips.Add("Immersion");
+            if (LiveDevice.Info.Supports(NuraAudioCapabilities.Spatial)) chips.Add("Spatial");
+            if (LiveDevice.Info.Supports(NuraAudioCapabilities.ProEq)) chips.Add("ProEQ");
+            if (LiveDevice.Info.Supports(NuraInteractionCapabilities.TouchButtons)) chips.Add("Buttons");
+            if (LiveDevice.Info.Supports(NuraInteractionCapabilities.Dial)) chips.Add("Dial");
+            if (LiveDevice.Info.Supports(NuraSystemCapabilities.Multipoint)) chips.Add("Multipoint");
+
+            return chips.Count == 0 ? "Generic device" : string.Join(" / ", chips);
+        }
+    }
+
     public void SetAuthContext(bool connectToNura, bool hasAuthenticatedWithNura) {
+        if (_connectToNura != connectToNura || _hasAuthenticatedWithNura != hasAuthenticatedWithNura) {
+            ResetAutoSetupFailure();
+        }
+
         _connectToNura = connectToNura;
         _hasAuthenticatedWithNura = hasAuthenticatedWithNura;
 
         RefreshWarningState();
         OnPropertyChanged(nameof(CanProvision));
+        OnPropertyChanged(nameof(CanUseFeatureControls));
+        OnPropertyChanged(nameof(ReadinessStatusText));
+    }
+
+    public void ResetAutoSetupFailure() {
+        _lastAutoSetupFailureKey = null;
+        _autoSetupFailed = false;
+        OnPropertyChanged(nameof(ReadinessStatusText));
     }
 
     public override void AttachLiveDevice(ConnectedNuraDevice? liveDevice) {
@@ -211,7 +310,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         OnPropertyChanged(nameof(CurrentProfileId));
     }
 
-    public async Task EnsureReadyAsync(
+    public async Task<bool> EnsureReadyAsync(
         bool connectToNura,
         bool hasAuthenticatedWithNura,
         bool forceProvision,
@@ -219,31 +318,28 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         CancellationToken cancellationToken = default
     ) {
         if (LiveDevice is null) {
-            return;
+            return false;
         }
 
         SetAuthContext(connectToNura, hasAuthenticatedWithNura);
 
-        await ExecuteLiveOperationAsync(
+        return await ExecuteLiveOperationAsync(
             async ct => {
                 if (!LiveDevice.IsConnected) {
-                    SetOperationFailure("The device is not connected over Bluetooth.");
-                    return;
+                    throw new InvalidOperationException("The device is not connected over Bluetooth.");
                 }
 
                 if (forceProvision || await LiveDevice.RequiresProvisioningAsync(ct)) {
                     if (!_connectToNura || !_hasAuthenticatedWithNura) {
-                        SetOperationFailure("Provisioning requires an authenticated Nura session.");
-                        return;
+                        throw new InvalidOperationException("Provisioning requires an authenticated Nura session.");
                     }
 
                     var provisioningResult = await LiveDevice.EnsureProvisionedAsync(forceProvision: true, cancellationToken: ct);
                     if (!provisioningResult.Success) {
-                        SetOperationFailure(provisioningResult.Error switch {
+                        throw new InvalidOperationException(provisioningResult.Error switch {
                             NuraProvisioningError.NotAuthenticated => "Provisioning requires an authenticated Nura session.",
                             _ => "Provisioning failed."
                         });
-                        return;
                     }
                 }
 
@@ -264,6 +360,57 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
                 ApplyFromLiveDevice();
             },
             cancellationToken);
+    }
+
+    public async Task<bool> TryAutoSetupAsync(
+        bool connectToNura,
+        bool hasAuthenticatedWithNura,
+        CancellationToken cancellationToken = default
+    ) {
+        if (LiveDevice is null || !IsConnected) {
+            return false;
+        }
+
+        if (IsAutoSetupInProgress || IsBusy) {
+            return false;
+        }
+
+        if (HasLocalSession && IsMonitoring && !RequiresProvisioning) {
+            return true;
+        }
+
+        SetAuthContext(connectToNura, hasAuthenticatedWithNura);
+
+        var failureKey = BuildAutoSetupFailureKey(connectToNura, hasAuthenticatedWithNura);
+        if (string.Equals(_lastAutoSetupFailureKey, failureKey, StringComparison.Ordinal)) {
+            return false;
+        }
+
+        if (LiveDevice.ProvisioningRequired && (!connectToNura || !hasAuthenticatedWithNura)) {
+            _lastAutoSetupFailureKey = failureKey;
+            _autoSetupFailed = false;
+            SetOperationFailure("Automatic setup needs a Nura login before this device can be provisioned.");
+            OnPropertyChanged(nameof(ReadinessStatusText));
+            return false;
+        }
+
+        IsAutoSetupInProgress = true;
+        try {
+            OperationStatusText = "Automatic setup starting.";
+            OperationStageCode = "auto_setup";
+            var success = await EnsureReadyAsync(
+                connectToNura,
+                hasAuthenticatedWithNura,
+                forceProvision: false,
+                refreshAfterConnect: true,
+                cancellationToken);
+            _lastAutoSetupFailureKey = success ? null : failureKey;
+            _autoSetupFailed = !success;
+            OnPropertyChanged(nameof(ReadinessStatusText));
+            return success;
+        } finally {
+            IsAutoSetupInProgress = false;
+        }
     }
 
     public Task RefreshFromDeviceAsync(CancellationToken cancellationToken = default) {
@@ -315,24 +462,184 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             rollbackToLiveStateOnFailure: true);
     }
 
+    public async Task ApplyPersonalisationAsync(bool isPersonalised, CancellationToken cancellationToken = default) {
+        if (LiveDevice is null) {
+            IsPersonalised = isPersonalised;
+            return;
+        }
+
+        if (!CanUseLocalCommands) {
+            SetOperationFailure("Connect and provision this device before changing personalisation.");
+            return;
+        }
+
+        await ExecuteLiveOperationAsync(
+            ct => LiveDevice.State.SetPersonalisationModeAsync(
+                isPersonalised ? NuraPersonalisationMode.Personalised : NuraPersonalisationMode.Neutral,
+                ct),
+            cancellationToken,
+            rollbackToLiveStateOnFailure: true);
+    }
+
+    public async Task ApplyImmersionIndexAsync(int immersionIndex, CancellationToken cancellationToken = default) {
+        var nextIndex = Math.Clamp(immersionIndex, 0, 6);
+        if (LiveDevice is null) {
+            ImmersionIndex = nextIndex;
+            return;
+        }
+
+        if (!CanUseLocalCommands) {
+            SetOperationFailure("Connect and provision this device before changing immersion.");
+            return;
+        }
+
+        if (!CanChangeImmersionControl) {
+            SetOperationFailure("Immersion control is not supported for this device.");
+            return;
+        }
+
+        await ExecuteLiveOperationAsync(
+            ct => LiveDevice.State.SetImmersionLevelAsync(NuraImmersionLevelExtensions.FromRawIndex(nextIndex), ct),
+            cancellationToken,
+            rollbackToLiveStateOnFailure: true);
+    }
+
+    public async Task ApplyAncEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
+        if (LiveDevice is null) {
+            AncEnabled = enabled;
+            return;
+        }
+
+        if (!CanUseLocalCommands) {
+            SetOperationFailure("Connect and provision this device before changing ANC.");
+            return;
+        }
+
+        await ExecuteLiveOperationAsync(
+            ct => LiveDevice.State.SetAncEnabledAsync(enabled, ct),
+            cancellationToken,
+            rollbackToLiveStateOnFailure: true);
+    }
+
+    public async Task ApplyPassthroughEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
+        if (LiveDevice is null) {
+            SocialMode = enabled;
+            return;
+        }
+
+        if (!CanUseLocalCommands) {
+            SetOperationFailure("Connect and provision this device before changing passthrough.");
+            return;
+        }
+
+        await ExecuteLiveOperationAsync(
+            ct => LiveDevice.State.SetPassthroughEnabledAsync(enabled, ct),
+            cancellationToken,
+            rollbackToLiveStateOnFailure: true);
+    }
+
+    public async Task ApplySpatialEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
+        if (LiveDevice is null) {
+            SpatialEnabled = enabled;
+            return;
+        }
+
+        if (!CanUseLocalCommands) {
+            SetOperationFailure("Connect and provision this device before changing spatial audio.");
+            return;
+        }
+
+        await ExecuteLiveOperationAsync(
+            ct => LiveDevice.State.SetSpatialEnabledAsync(enabled, ct),
+            cancellationToken,
+            rollbackToLiveStateOnFailure: true);
+    }
+
+    public async Task ApplyAncLevelAsync(int level, CancellationToken cancellationToken = default) {
+        var nextLevel = Math.Clamp(level, 0, 4);
+        if (LiveDevice is null) {
+            AncLevel = nextLevel;
+            return;
+        }
+
+        if (!CanUseLocalCommands) {
+            SetOperationFailure("Connect and provision this device before changing ANC level.");
+            return;
+        }
+
+        await ExecuteLiveOperationAsync(
+            ct => LiveDevice.State.SetAncLevelAsync(nextLevel, ct),
+            cancellationToken,
+            rollbackToLiveStateOnFailure: true);
+    }
+
+    public async Task ApplyTouchButtonsAsync(NuraButtonConfiguration configuration, CancellationToken cancellationToken = default) {
+        if (LiveDevice is null) {
+            TouchButtons = configuration;
+            return;
+        }
+
+        if (!CanUseLocalCommands) {
+            SetOperationFailure("Connect and provision this device before changing touch buttons.");
+            return;
+        }
+
+        await ExecuteLiveOperationAsync(
+            ct => LiveDevice.Configuration.SetTouchButtonsAsync(configuration, ct),
+            cancellationToken,
+            rollbackToLiveStateOnFailure: true);
+    }
+
+    public async Task ApplyDialAsync(NuraDialConfiguration configuration, CancellationToken cancellationToken = default) {
+        if (LiveDevice is null) {
+            Dial = configuration;
+            return;
+        }
+
+        if (!CanUseLocalCommands) {
+            SetOperationFailure("Connect and provision this device before changing dial bindings.");
+            return;
+        }
+
+        await ExecuteLiveOperationAsync(
+            ct => LiveDevice.Configuration.SetDialAsync(configuration, ct),
+            cancellationToken,
+            rollbackToLiveStateOnFailure: true);
+    }
+
+    public async Task RefreshBatteryAsync(CancellationToken cancellationToken = default) {
+        if (LiveDevice is null) {
+            return;
+        }
+
+        if (!CanUseLocalCommands) {
+            SetOperationFailure("Connect and provision this device before refreshing battery.");
+            return;
+        }
+
+        await ExecuteLiveOperationAsync(
+            ct => LiveDevice.State.RetrieveBatteryAsync(ct),
+            cancellationToken,
+            rollbackToLiveStateOnFailure: true);
+    }
+
     public ValueTask DisposeAsync() {
         if (LiveDevice is not null) {
             UnsubscribeLiveDevice(LiveDevice);
         }
 
-        PropertyChanged -= OnViewModelPropertyChanged;
         _operationGate.Dispose();
         return ValueTask.CompletedTask;
     }
 
-    private async Task ExecuteLiveOperationAsync(
+    private async Task<bool> ExecuteLiveOperationAsync(
         Func<CancellationToken, Task> operation,
         CancellationToken cancellationToken,
         bool rollbackToLiveStateOnFailure = false,
         bool rethrowOnFailure = false
     ) {
         if (LiveDevice is null) {
-            return;
+            return false;
         }
 
         await _operationGate.WaitAsync(cancellationToken);
@@ -345,6 +652,10 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
                 OperationStatusText = "Ready.";
                 OperationStageCode = string.Empty;
             }
+            _autoSetupFailed = false;
+            _lastAutoSetupFailureKey = null;
+            OnPropertyChanged(nameof(ReadinessStatusText));
+            return true;
         } catch (Exception ex) {
             OperationStatusText = ex.Message;
             OperationStageCode = "failed";
@@ -357,114 +668,20 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             if (rethrowOnFailure) {
                 throw;
             }
+
+            return false;
         } finally {
             IsBusy = false;
             _operationGate.Release();
         }
     }
 
-    private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e) {
-        if (_isApplyingSdkUpdate || LiveDevice is null || !CanUseLocalCommands) {
-            return;
-        }
-
-        try {
-            switch (e.PropertyName) {
-            case nameof(IsPersonalised):
-                await ExecuteLiveOperationAsync(
-                    ct => LiveDevice.State.SetPersonalisationModeAsync(
-                        IsPersonalised ? NuraPersonalisationMode.Personalised : NuraPersonalisationMode.Neutral,
-                        ct),
-                    CancellationToken.None,
-                    rollbackToLiveStateOnFailure: true);
-                break;
-            case nameof(ImmersionIndex) when CanChangeImmersionControl:
-                await ExecuteLiveOperationAsync(
-                    ct => LiveDevice.State.SetImmersionLevelAsync(NuraImmersionLevelExtensions.FromRawIndex(ImmersionIndex), ct),
-                    CancellationToken.None,
-                    rollbackToLiveStateOnFailure: true);
-                break;
-            case nameof(AncEnabled):
-                await ExecuteLiveOperationAsync(
-                    ct => LiveDevice.State.SetAncEnabledAsync(AncEnabled, ct),
-                    CancellationToken.None,
-                    rollbackToLiveStateOnFailure: true);
-                break;
-            case nameof(SocialMode):
-                await ExecuteLiveOperationAsync(
-                    ct => LiveDevice.State.SetPassthroughEnabledAsync(SocialMode, ct),
-                    CancellationToken.None,
-                    rollbackToLiveStateOnFailure: true);
-                break;
-            case nameof(SpatialEnabled):
-                await ExecuteLiveOperationAsync(
-                    ct => LiveDevice.State.SetSpatialEnabledAsync(SpatialEnabled, ct),
-                    CancellationToken.None,
-                    rollbackToLiveStateOnFailure: true);
-                break;
-            case nameof(AncLevel) when AncLevel is int ancLevel:
-                await ExecuteLiveOperationAsync(
-                    ct => LiveDevice.State.SetAncLevelAsync(ancLevel, ct),
-                    CancellationToken.None,
-                    rollbackToLiveStateOnFailure: true);
-                break;
-            case nameof(TouchButtons) when TouchButtons is not null:
-                await ExecuteLiveOperationAsync(
-                    ct => LiveDevice.Configuration.SetTouchButtonsAsync(TouchButtons, ct),
-                    CancellationToken.None,
-                    rollbackToLiveStateOnFailure: true);
-                break;
-            case nameof(Dial) when Dial is not null:
-                await ExecuteLiveOperationAsync(
-                    ct => LiveDevice.Configuration.SetDialAsync(Dial, ct),
-                    CancellationToken.None,
-                    rollbackToLiveStateOnFailure: true);
-                break;
-            }
-        } catch {
-        }
-    }
-
     private void SubscribeLiveDevice(ConnectedNuraDevice liveDevice) {
-        liveDevice.IsConnectedChanged += OnLiveDeviceEvent;
-        liveDevice.InfoChanged += OnLiveDeviceEvent;
-        liveDevice.HasPersistentDeviceKeyChanged += OnLiveDeviceEvent;
-        liveDevice.LocalSessionChanged += OnLiveDeviceEvent;
-        liveDevice.MonitoringChanged += OnLiveDeviceEvent;
-        liveDevice.ProvisioningRequiredChanged += OnLiveDeviceEvent;
-        liveDevice.OperationStatusChanged += OnLiveDeviceEvent;
-        liveDevice.State.AncEnabledChanged += OnLiveDeviceEvent;
-        liveDevice.State.PassthroughEnabledChanged += OnLiveDeviceEvent;
-        liveDevice.State.AncLevelChanged += OnLiveDeviceEvent;
-        liveDevice.State.SpatialEnabledChanged += OnLiveDeviceEvent;
-        liveDevice.State.PersonalisationModeChanged += OnLiveDeviceEvent;
-        liveDevice.State.ImmersionLevelChanged += OnLiveDeviceEvent;
-        liveDevice.Configuration.TouchButtonsChanged += OnLiveDeviceEvent;
-        liveDevice.Configuration.DialChanged += OnLiveDeviceEvent;
-        liveDevice.Profiles.ProfileIdChanged += OnLiveDeviceEvent;
-        liveDevice.Profiles.NamesChanged += OnLiveDeviceEvent;
-        liveDevice.Profiles.VisualisationsChanged += OnLiveDeviceEvent;
+        liveDevice.Changed += OnLiveDeviceEvent;
     }
 
     private void UnsubscribeLiveDevice(ConnectedNuraDevice liveDevice) {
-        liveDevice.IsConnectedChanged -= OnLiveDeviceEvent;
-        liveDevice.InfoChanged -= OnLiveDeviceEvent;
-        liveDevice.HasPersistentDeviceKeyChanged -= OnLiveDeviceEvent;
-        liveDevice.LocalSessionChanged -= OnLiveDeviceEvent;
-        liveDevice.MonitoringChanged -= OnLiveDeviceEvent;
-        liveDevice.ProvisioningRequiredChanged -= OnLiveDeviceEvent;
-        liveDevice.OperationStatusChanged -= OnLiveDeviceEvent;
-        liveDevice.State.AncEnabledChanged -= OnLiveDeviceEvent;
-        liveDevice.State.PassthroughEnabledChanged -= OnLiveDeviceEvent;
-        liveDevice.State.AncLevelChanged -= OnLiveDeviceEvent;
-        liveDevice.State.SpatialEnabledChanged -= OnLiveDeviceEvent;
-        liveDevice.State.PersonalisationModeChanged -= OnLiveDeviceEvent;
-        liveDevice.State.ImmersionLevelChanged -= OnLiveDeviceEvent;
-        liveDevice.Configuration.TouchButtonsChanged -= OnLiveDeviceEvent;
-        liveDevice.Configuration.DialChanged -= OnLiveDeviceEvent;
-        liveDevice.Profiles.ProfileIdChanged -= OnLiveDeviceEvent;
-        liveDevice.Profiles.NamesChanged -= OnLiveDeviceEvent;
-        liveDevice.Profiles.VisualisationsChanged -= OnLiveDeviceEvent;
+        liveDevice.Changed -= OnLiveDeviceEvent;
     }
 
     private async void OnLiveDeviceEvent(object? sender, EventArgs e) {
@@ -476,56 +693,54 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             return;
         }
 
-        _isApplyingSdkUpdate = true;
+        Name = LiveDevice.Info.DisplayName;
+        IsConnected = LiveDevice.IsConnected;
+        SerialNumber = LiveDevice.Info.Serial;
+        SoftwareVersion = LiveDevice.Info.FirmwareVersion.ToString(CultureInfo.InvariantCulture);
+        BatteryLevel = LiveDevice.State.Battery?.BatteryPercentage;
+        SupportsAnc = LiveDevice.Info.Supports(NuraAudioCapabilities.Anc);
+        SupportsAncLevel = LiveDevice.Info.Supports(NuraAudioCapabilities.AncLevel);
+        SupportsSpatial = LiveDevice.Info.Supports(NuraAudioCapabilities.Spatial);
+        SupportsTouchButtons = LiveDevice.Info.Supports(NuraInteractionCapabilities.TouchButtons);
+        SupportsDial = LiveDevice.Info.Supports(NuraInteractionCapabilities.Dial);
+        SupportsEuVolumeLimiter = false;
 
-        try {
-            Name = LiveDevice.Info.DisplayName;
-            IsConnected = LiveDevice.IsConnected;
-            SerialNumber = LiveDevice.Info.Serial;
-            SoftwareVersion = LiveDevice.Info.FirmwareVersion.ToString(CultureInfo.InvariantCulture);
-            BatteryLevel = null;
-            SupportsAnc = LiveDevice.Info.Supports(NuraAudioCapabilities.Anc);
-            SupportsAncLevel = LiveDevice.Info.Supports(NuraAudioCapabilities.AncLevel);
-            SupportsSpatial = LiveDevice.Info.Supports(NuraAudioCapabilities.Spatial);
-            SupportsTouchButtons = LiveDevice.Info.Supports(NuraInteractionCapabilities.TouchButtons);
-            SupportsDial = LiveDevice.Info.Supports(NuraInteractionCapabilities.Dial);
-            SupportsEuVolumeLimiter = false;
-
-            if (LiveDevice.State.AncEnabled is bool ancEnabled) {
-                AncEnabled = ancEnabled;
-            }
-
-            if (LiveDevice.State.PassthroughEnabled is bool passthroughEnabled) {
-                SocialMode = passthroughEnabled;
-            }
-
-            if (LiveDevice.State.SpatialEnabled is bool spatialEnabled) {
-                SpatialEnabled = spatialEnabled;
-            }
-
-            if (LiveDevice.State.PersonalisationMode is NuraPersonalisationMode mode) {
-                IsPersonalised = mode == NuraPersonalisationMode.Personalised;
-            }
-
-            if (LiveDevice.State.ImmersionLevel is NuraImmersionLevel immersionLevel) {
-                ImmersionIndex = immersionLevel.ToRawIndex();
-            }
-
-            AncLevel = LiveDevice.State.AncLevel;
-            TouchButtons = LiveDevice.Configuration.TouchButtons;
-            Dial = LiveDevice.Configuration.Dial;
-            Profiles = BuildProfilesFromLiveDevice(LiveDevice);
-            HasLocalSession = LiveDevice.HasLocalSession;
-            IsMonitoring = LiveDevice.IsMonitoring;
-            RequiresProvisioning = LiveDevice.ProvisioningRequired || !LiveDevice.HasPersistentDeviceKey;
-            ApplyOperationStatus(LiveDevice.OperationStatus);
-            RefreshWarningState();
-        } finally {
-            _isApplyingSdkUpdate = false;
+        if (LiveDevice.State.AncEnabled is bool ancEnabled) {
+            AncEnabled = ancEnabled;
         }
+
+        if (LiveDevice.State.PassthroughEnabled is bool passthroughEnabled) {
+            SocialMode = passthroughEnabled;
+        }
+
+        if (LiveDevice.State.SpatialEnabled is bool spatialEnabled) {
+            SpatialEnabled = spatialEnabled;
+        }
+
+        if (LiveDevice.State.PersonalisationMode is NuraPersonalisationMode mode) {
+            IsPersonalised = mode == NuraPersonalisationMode.Personalised;
+        }
+
+        if (LiveDevice.State.ImmersionLevel is NuraImmersionLevel immersionLevel) {
+            ImmersionIndex = immersionLevel.ToRawIndex();
+        }
+
+        AncLevel = LiveDevice.State.AncLevel;
+        TouchButtons = LiveDevice.Configuration.TouchButtons;
+        Dial = LiveDevice.Configuration.Dial;
+        Profiles = BuildProfilesFromLiveDevice(LiveDevice);
+        HasLocalSession = LiveDevice.HasLocalSession;
+        IsMonitoring = LiveDevice.IsMonitoring;
+        RequiresProvisioning = LiveDevice.ProvisioningRequired || !LiveDevice.HasPersistentDeviceKey;
+        ApplyOperationStatus(LiveDevice.OperationStatus);
+        RefreshWarningState();
 
         OnPropertyChanged(nameof(CurrentProfileId));
         OnPropertyChanged(nameof(CanChangeImmersionControl));
+        OnPropertyChanged(nameof(CanUseFeatureControls));
+        OnPropertyChanged(nameof(DeviceFamilyText));
+        OnPropertyChanged(nameof(DeviceCapabilitySummary));
+        OnPropertyChanged(nameof(ReadinessStatusText));
     }
 
     private void ApplyOperationStatus(NuraDeviceOperationStatus? status) {
@@ -572,6 +787,21 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         OperationStageCode = "failed";
         WarningText = message;
         RefreshWarningState();
+    }
+
+    private string BuildAutoSetupFailureKey(bool connectToNura, bool hasAuthenticatedWithNura) {
+        if (LiveDevice is null) {
+            return "none";
+        }
+
+        return string.Join(
+            "|",
+            IsConnected,
+            LiveDevice.HasPersistentDeviceKey,
+            LiveDevice.ProvisioningRequired,
+            LiveDevice.ProvisioningRequirementReason,
+            connectToNura,
+            hasAuthenticatedWithNura);
     }
 
     private IReadOnlyList<ProfileModel> BuildProfilesFromLiveDevice(ConnectedNuraDevice liveDevice) {

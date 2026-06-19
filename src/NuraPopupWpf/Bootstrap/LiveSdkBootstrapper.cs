@@ -29,11 +29,11 @@ public sealed class LiveSdkBootstrapper : IPopupAppBootstrapper {
             }
         }
 
-        await client.Devices.RefreshAsync(cancellationToken);
-        await client.Monitoring.StartAsync(cancellationToken);
-
         var viewModel = MainViewModel.CreateLive(client, storagePaths);
         await viewModel.InitializeLiveAsync(resumedAuthenticatedSession, resumeError, cancellationToken);
+        await client.Devices.RefreshAsync(cancellationToken);
+        await viewModel.SyncLiveDevicesFromClientAsync(preferFirstConnectedDevice: true, cancellationToken);
+        await client.Monitoring.StartAsync(cancellationToken);
 
         return new PopupAppContext(
             PopupAppBootstrapMode.Live,
