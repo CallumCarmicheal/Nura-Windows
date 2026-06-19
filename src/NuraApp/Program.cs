@@ -550,18 +550,22 @@ static class Program {
                 AddSupportedChip(stateSegments, live, NuraAudioCapabilities.AncLevel, "ANC lvl", live.State.AncLevel?.ToString(), 0x22D3EE);
                 AddSupportedBoolChip(stateSegments, live, NuraAudioCapabilities.GlobalAncToggle, "global ANC", live.State.GlobalAncEnabled, 0x22C55E);
                 AddSupportedChip(stateSegments, live, NuraAudioCapabilities.Immersion, "imm", FormatImmersion(live.State.EffectiveImmersionLevel ?? live.State.ImmersionLevel), 0xF97316);
-                AddSupportedChip(stateSegments, live, NuraAudioCapabilities.PersonalisedMode, "mode", FormatPersonalisation(live.State.PersonalisationMode), 0xEC4899);
+                AddSupportedChip(stateSegments, live, NuraAudioCapabilities.PersonalisedMode, "mode", FormatPersonalisation(live.State.PersonalisationMode),
+                    live.State.PersonalisationMode == NuraPersonalisationMode.Personalised ? /* Pink */ 0xEC4899 : /* Grey */ 0x94A3B8);
                 AddSupportedBoolChip(stateSegments, live, NuraAudioCapabilities.Spatial, "spatial", live.State.SpatialEnabled, 0x38BDF8);
                 AddReadOnlyFeatureChip(stateSegments, live, NuraAudioCapabilities.ProEq, "ProEQ");
                 AddReadOnlyFeatureChip(stateSegments, live, NuraAudioCapabilities.EuAttenuation, "EU limit");
                 AddReadOnlyFeatureChip(stateSegments, live, NuraInteractionCapabilities.Dial, "dial");
                 AddReadOnlyFeatureChip(stateSegments, live, NuraInteractionCapabilities.TouchButtons, "buttons");
                 AddReadOnlyFeatureChip(stateSegments, live, NuraInteractionCapabilities.HeadDetection, "head detect");
+                
                 if (live.Info.Supports(NuraInteractionCapabilities.VoicePromptGain)) {
                     AddChip(stateSegments, "voice", live.Configuration.VoicePromptGain?.ToString().ToLowerInvariant() ?? "supported", 0x94A3B8, addPrefix: stateSegments.Count > 0);
                 }
+
                 AddReadOnlyFeatureChip(stateSegments, live, NuraSystemCapabilities.Multipoint, "multipoint");
                 AddReadOnlyFeatureChip(stateSegments, live, NuraSystemCapabilities.BulkCommands, "bulk");
+                
                 if (live.Info.IsTws) {
                     AddChip(stateSegments, "TWS", "yes", 0x38BDF8, addPrefix: stateSegments.Count > 0);
                 }
