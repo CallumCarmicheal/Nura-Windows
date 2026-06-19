@@ -5,6 +5,7 @@ using NuraLib.Logging;
 using NuraLib.Protocol;
 using NuraLib.Utilities.Docs;
 using NuraLib.Transport;
+using System.Threading.Channels;
 
 namespace NuraLib.Devices;
 
@@ -19,11 +20,14 @@ public sealed class ConnectedNuraDevice : NuraDevice {
     private readonly NuraAuthManager _authManager;
     private readonly NuraClientLogger _logger;
     private readonly SemaphoreSlim _connectGate = new(1, 1);
+    private readonly SemaphoreSlim _sessionStopGate = new(1, 1);
     private readonly Dictionary<int, NuraAncState> _profileAncStates = [];
     private readonly Dictionary<int, NuraClassicKickitParams> _classicKickitParams = [];
     private ConnectedNuraDeviceSession? _session;
     private CancellationTokenSource? _monitoringCts;
     private Task? _monitoringTask;
+    private Channel<GaiaResponse>? _monitoringIndications;
+    private ConnectedNuraDeviceSession? _monitoringSession;
     private bool _hasLocalSession;
     private bool _isMonitoring;
     private bool _provisioningRequired;
@@ -799,6 +803,7 @@ public sealed class ConnectedNuraDevice : NuraDevice {
                 await transport.ConnectAsync(Info.DeviceAddress, cancellationToken);
                 await NuraLocalSessionSupport.PerformAppHandshakeAsync(runtime, transport, _logger, cancellationToken);
                 _session = new ConnectedNuraDeviceSession(runtime, transport, _logger, Info.Serial);
+                _session.Disconnected += HandleSessionDisconnected;
                 UpdateLocalSessionState(true);
                 _logger.Information(Source, $"Local encrypted session established for {Info.Serial}.");
 
@@ -989,13 +994,24 @@ public sealed class ConnectedNuraDevice : NuraDevice {
 
     private async Task StopSessionAsync(CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        await _sessionStopGate.WaitAsync(cancellationToken);
+        try {
+            await StopSessionCoreAsync();
+        } finally {
+            _sessionStopGate.Release();
+        }
+    }
+
+    private async Task StopSessionCoreAsync() {
         await StopMonitoringLoopAsync();
-        if (_session is null) {
+        var session = _session;
+        if (session is null) {
             return;
         }
 
-        await _session.DisposeAsync();
         _session = null;
+        session.Disconnected -= HandleSessionDisconnected;
+        await session.DisposeAsync();
         UpdateLocalSessionState(false);
         _logger.Information(Source, $"Local session stopped for {Info.Serial}.");
     }
@@ -1008,27 +1024,34 @@ public sealed class ConnectedNuraDevice : NuraDevice {
             return;
         }
 
+        var session = _session ?? throw new InvalidOperationException("Local control session was not available after connection.");
+        var indications = Channel.CreateUnbounded<GaiaResponse>(new UnboundedChannelOptions {
+            SingleWriter = true,
+            SingleReader = true,
+            AllowSynchronousContinuations = false
+        });
+        _monitoringSession = session;
+        _monitoringIndications = indications;
+        session.IndicationReceived += HandleSessionIndication;
         _monitoringCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _monitoringTask = RunMonitoringLoopAsync(_monitoringCts.Token);
+        _monitoringTask = RunMonitoringLoopAsync(indications.Reader, _monitoringCts.Token);
         UpdateMonitoringState(true);
         _logger.Information(Source, $"Started monitoring loop for {Info.Serial}.");
     }
 
-    private async Task RunMonitoringLoopAsync(CancellationToken cancellationToken) {
+    private async Task RunMonitoringLoopAsync(ChannelReader<GaiaResponse> indications, CancellationToken cancellationToken) {
         try {
-            while (!cancellationToken.IsCancellationRequested && _session is not null) {
-                var frames = await _session.CollectAsync(idleTimeoutMs: 1500, maxFrames: 8, cancellationToken);
-                foreach (var frame in frames) {
-                    var indication = HeadsetIndicationParser.Parse(frame);
-                    if (indication is null) {
-                        _logger.Trace(Source, $"rx.non_indication.command=0x{frame.CommandId:x4}");
-                        continue;
+            await foreach (var frame in indications.ReadAllAsync(cancellationToken)) {
+                var indication = HeadsetIndicationParser.Parse(frame);
+                if (indication is null) {
+                    if (_logger.IsEnabled(NuraLogLevel.Trace)) {
+                        _logger.Trace(Source, $"rx.invalid_indication.command=0x{frame.CommandId:x4}");
                     }
 
-                    HandleIndication(indication);
+                    continue;
                 }
 
-                await Task.Delay(100, cancellationToken);
+                HandleIndication(indication);
             }
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
         } catch (Exception ex) {
@@ -1083,6 +1106,14 @@ public sealed class ConnectedNuraDevice : NuraDevice {
             return;
         }
 
+        var monitoringSession = _monitoringSession;
+        if (monitoringSession is not null) {
+            monitoringSession.IndicationReceived -= HandleSessionIndication;
+        }
+
+        _monitoringSession = null;
+        _monitoringIndications?.Writer.TryComplete();
+        _monitoringIndications = null;
         _monitoringCts.Cancel();
         if (_monitoringTask is not null) {
             try {
@@ -1096,6 +1127,37 @@ public sealed class ConnectedNuraDevice : NuraDevice {
         _monitoringCts = null;
         UpdateMonitoringState(false);
         _logger.Information(Source, $"Stopped monitoring loop for {Info.Serial}.");
+    }
+
+    private void HandleSessionIndication(GaiaResponse response) {
+        _monitoringIndications?.Writer.TryWrite(response);
+    }
+
+    private void HandleSessionDisconnected(Exception exception) {
+        var session = _session;
+        if (session is null) {
+            return;
+        }
+
+        _ = StopDisconnectedSessionAsync(session, exception);
+    }
+
+    private async Task StopDisconnectedSessionAsync(ConnectedNuraDeviceSession session, Exception exception) {
+        try {
+            await _sessionStopGate.WaitAsync();
+            try {
+                if (!ReferenceEquals(_session, session)) {
+                    return;
+                }
+
+                _logger.Warning(Source, $"Local session disconnected for {Info.Serial}: {exception.Message}");
+                await StopSessionCoreAsync();
+            } finally {
+                _sessionStopGate.Release();
+            }
+        } catch (Exception stopException) {
+            _logger.Warning(Source, $"Failed to stop disconnected local session for {Info.Serial}: {stopException.Message}");
+        }
     }
 
     private void UpdateLocalSessionState(bool hasLocalSession) {

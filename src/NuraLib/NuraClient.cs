@@ -10,6 +10,7 @@ namespace NuraLib;
 /// </summary>
 public sealed class NuraClient {
     private readonly NuraClientLogger _logger;
+    private int _minimumLogLevel = (int)NuraLogLevel.Trace;
 
     /// <summary>
     /// Creates a new <see cref="NuraClient"/> with the provided state container.
@@ -21,7 +22,7 @@ public sealed class NuraClient {
     public NuraClient(NuraConfigState? state = null) {
         State = state ?? new NuraConfigState();
         State.StateSaveRequested += HandleStateSaveRequested;
-        _logger = new NuraClientLogger(EmitLog);
+        _logger = new NuraClientLogger(EmitLog, () => MinimumLogLevel);
         Auth = new NuraAuthManager(State, _logger);
         Devices = new NuraDeviceManager(State, _logger, Auth);
         Monitoring = new NuraMonitoringManager(Devices, _logger);
@@ -46,6 +47,24 @@ public sealed class NuraClient {
     /// Gets the monitoring manager used to subscribe to connection lifecycle events.
     /// </summary>
     public NuraMonitoringManager Monitoring { get; }
+
+    /// <summary>
+    /// Gets or sets the least verbose diagnostic level emitted by this client.
+    /// <para>
+    /// The default is <see cref="NuraLogLevel.Trace"/> to preserve the existing diagnostic surface.
+    /// Hosts can raise this level to avoid constructing high-volume Bluetooth frame diagnostics.
+    /// </para>
+    /// </summary>
+    public NuraLogLevel MinimumLogLevel {
+        get => (NuraLogLevel)Volatile.Read(ref _minimumLogLevel);
+        set {
+            if (!Enum.IsDefined(value)) {
+                throw new ArgumentOutOfRangeException(nameof(value));
+            }
+
+            Volatile.Write(ref _minimumLogLevel, (int)value);
+        }
+    }
 
     /// <summary>
     /// Raised when the library mutates state that should typically be persisted by the host application.

@@ -13,6 +13,8 @@ var tests = new CommandRoundTripTests();
 tests.RunAll();
 var deviceManagerTests = new DeviceManagerStabilityTests();
 deviceManagerTests.RunAll();
+var transportDispatcherTests = new TransportDispatcherTests();
+await transportDispatcherTests.RunAllAsync();
 Console.WriteLine("All NuraLib packet round-trip tests passed.");
 
 internal sealed class CommandRoundTripTests {

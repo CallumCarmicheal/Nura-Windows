@@ -3,6 +3,10 @@ using NuraLib.Protocol;
 namespace NuraLib.Transport;
 
 internal interface IHeadsetTransport : IAsyncDisposable {
+    event Action<GaiaResponse>? IndicationReceived;
+
+    event Action<Exception>? Disconnected;
+
     string Describe();
 
     Task ConnectAsync(string deviceAddress, CancellationToken cancellationToken);
@@ -12,16 +16,5 @@ internal interface IHeadsetTransport : IAsyncDisposable {
     Task<GaiaResponse> ExchangeAsync(
         GaiaFrame frame,
         GaiaCommandId expectedResponse,
-        CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<GaiaResponse>> SendAndCollectAsync(
-        GaiaFrame frame,
-        int idleTimeoutMs,
-        int maxFrames,
-        CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<GaiaResponse>> CollectAsync(
-        int idleTimeoutMs,
-        int maxFrames,
         CancellationToken cancellationToken);
 }

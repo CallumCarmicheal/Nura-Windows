@@ -974,6 +974,8 @@ Again: stopping device monitoring also tears down the local RFCOMM session.
 
 Subscribe to `NuraClient.OnLog`.
 
+`NuraClient.MinimumLogLevel` controls the least verbose emitted level. It defaults to `Trace` for compatibility. Set it to `Information` in normal UI builds to avoid generating per-frame Bluetooth diagnostics; use `Trace` only while diagnosing a transport or protocol issue.
+
 Payload type: `src/NuraLib/Logging/NuraLogEventArgs.cs`
 
 Levels: `src/NuraLib/Logging/NuraLogLevel.cs`
@@ -987,6 +989,8 @@ Levels: `src/NuraLib/Logging/NuraLogLevel.cs`
 Example:
 
 ```csharp
+client.MinimumLogLevel = NuraLogLevel.Information;
+
 client.OnLog += (_, args) =>
 {
     Console.WriteLine(

@@ -99,15 +99,15 @@ static class Program {
         var config = NuraConfigStore.LoadOrCreate(configPath);
         var state = new NuraConfigState(config);
         var client = Client = new NuraClient(state);
+        client.MinimumLogLevel = AppSettings.ShowNuraDebugMessages
+            ? NuraLogLevel.Trace
+            : NuraLogLevel.Information;
 
         client.RequestStateSave += (_, args) => {
             NuraConfigStore.Save(configPath, client.State.Configuration);
         };
 
         client.OnLog += (_, args) => {
-            // Hide spam
-            if (args.Message == "Frame collection stopped after idle timeout.") return;
-
             // Hide debug messages
             if (!AppSettings.ShowNuraDebugMessages && args.Level <= NuraLogLevel.Debug) 
                 return;
@@ -1024,6 +1024,12 @@ static class Program {
 
     private static void ToggleNuraDebugMessages() {
         AppSettings.ShowNuraDebugMessages = !AppSettings.ShowNuraDebugMessages;
+        if (Client is not null) {
+            Client.MinimumLogLevel = AppSettings.ShowNuraDebugMessages
+                ? NuraLogLevel.Trace
+                : NuraLogLevel.Information;
+        }
+
         SaveAppSettings(AppSettingsPath, AppSettings);
 
         var stateText = AppSettings.ShowNuraDebugMessages ? "shown" : "hidden";
