@@ -3,6 +3,11 @@ using NuraLib.Devices;
 namespace NuraLib.Rendering;
 
 public sealed record class NuraProfileBitmap(int Width, int Height, byte[] Pixels) {
+    /// <summary>
+    /// Gets whether <see cref="Pixels"/> are premultiplied by their alpha channel.
+    /// </summary>
+    public bool IsPremultiplied { get; init; }
+
     public int Stride => Width * 4;
 }
 
@@ -34,8 +39,8 @@ public class NuraProfileBitmapRenderer {
         NuraProfileVisualisationData profile,
         double personalisationProgress,
         int size,
-        double immersionValue
-    ) => Render(profile, profile, 1.0, personalisationProgress, size, immersionValue);
+        bool useTransparency = false
+    ) => Render(profile, profile, 1.0, personalisationProgress, size, useTransparency);
 
     public NuraProfileBitmap Render(
         NuraProfileVisualisationData targetProfile,
@@ -43,7 +48,7 @@ public class NuraProfileBitmapRenderer {
         double profileBlendProgress,
         double personalisationProgress,
         int size,
-        double immersionValue
+        bool useTransparency = false
     ) {
         ArgumentNullException.ThrowIfNull(targetProfile);
         ArgumentNullException.ThrowIfNull(fromProfile);
@@ -51,10 +56,6 @@ public class NuraProfileBitmapRenderer {
         if (size <= 0) {
             throw new ArgumentOutOfRangeException(nameof(size), "Render size must be greater than zero.");
         }
-
-        // The official static Android renderer has no immersion input. Keep this parameter
-        // for source compatibility with existing callers but intentionally do not use it.
-        _ = immersionValue;
 
         var blend = Math.Clamp(profileBlendProgress, 0.0, 1.0);
         var personalisation = Math.Clamp(personalisationProgress, 0.0, 1.0);
@@ -88,6 +89,7 @@ public class NuraProfileBitmapRenderer {
                 var colourSlide = (rotatedX + rotatedY + (radius * 0.2)) * HueSlideAmount;
                 var colourValue = new Rgb(1.0, 1.0, 1.0);
                 var blendMix = 1.0 - (py + 0.7);
+                var opacity = 0.0;
 
                 for (var contour = 0; contour < 6; contour++) {
                     var contourValue = contour * ContourStep;
@@ -98,29 +100,38 @@ public class NuraProfileBitmapRenderer {
                     var layerColour = contour == 0
                         ? colours.First * personalisation
                         : Lerp(colours.First, colours.Second, contourValue * 1.3) * personalisation;
+                    var coverage = Math.Clamp(alpha * solid, 0.0, 1.0);
 
                     var alphaColour = Lerp(colourValue, layerColour, alpha * solid);
                     var multipliedColour = Lerp(colourValue, colourValue * layerColour, alpha * solid);
                     colourValue = Lerp(alphaColour, multipliedColour, blendMix);
+                    opacity = coverage + (opacity * (1.0 - coverage));
                 }
 
                 colourValue = HueRotate(colourValue, -colourSlide);
                 var pixelIndex = ((y * size) + x) * 4;
-                pixels[pixelIndex] = ToByte(colourValue.B);
-                pixels[pixelIndex + 1] = ToByte(colourValue.G);
-                pixels[pixelIndex + 2] = ToByte(colourValue.R);
-                pixels[pixelIndex + 3] = byte.MaxValue;
+                var alphaValue = useTransparency ? opacity : 1.0;
+
+                // The native static renderer composites over white. The optional transparent
+                // output retains that profile colour but stores it as premultiplied BGRA.
+                pixels[pixelIndex] = ToByte(Math.Clamp(colourValue.B, 0.0, 1.0) * alphaValue);
+                pixels[pixelIndex + 1] = ToByte(Math.Clamp(colourValue.G, 0.0, 1.0) * alphaValue);
+                pixels[pixelIndex + 2] = ToByte(Math.Clamp(colourValue.R, 0.0, 1.0) * alphaValue);
+                pixels[pixelIndex + 3] = ToByte(alphaValue);
             }
         }
 
-        return new NuraProfileBitmap(size, size, pixels);
+        return new NuraProfileBitmap(size, size, pixels) { IsPremultiplied = true };
     }
 
     /// <summary>
     /// Renders the static profile image used for profile previews and exports.
     /// </summary>
-    public NuraProfileBitmap RenderThumbnail(NuraProfileVisualisationData profile, int size) =>
-        Render(profile, profile, 1.0, 1.0, size, immersionValue: 0.0);
+    public NuraProfileBitmap RenderThumbnail(
+        NuraProfileVisualisationData profile,
+        int size,
+        bool useTransparency = false
+    ) => Render(profile, profile, 1.0, 1.0, size, useTransparency);
 
     private static double[] BlendValues(IReadOnlyList<double> source, IReadOnlyList<double> target, double blend) {
         var count = Math.Min(source.Count, target.Count);

@@ -59,7 +59,7 @@ public static class NuraProfileConsoleExtensions {
                 emptySize,
                 emptySize,
                 new byte[emptySize * emptySize * 4]
-            );
+            ) { IsPremultiplied = source.IsPremultiplied };
         }
 
         int contentWidth = maxX - minX + 1;
@@ -106,7 +106,7 @@ public static class NuraProfileConsoleExtensions {
             outputSize,
             outputSize,
             outputPixels
-        );
+        ) { IsPremultiplied = source.IsPremultiplied };
     }
 
     private static bool IsVisible(

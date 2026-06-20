@@ -21,6 +21,7 @@ public static class NuraProfileBitmapExtensions {
     public static Bitmap ToDrawingBitmap(this NuraProfileBitmap source) {
         ArgumentNullException.ThrowIfNull(source);
         ValidateBitmap(source);
+        var pixels = source.IsPremultiplied ? Unpremultiply(source.Pixels) : source.Pixels;
 
         var bitmap = new Bitmap(
             source.Width,
@@ -50,7 +51,7 @@ public static class NuraProfileBitmapExtensions {
                     : data.Scan0 + ((source.Height - 1 - y) * -data.Stride);
 
                 Marshal.Copy(
-                    source.Pixels,
+                    pixels,
                     sourceOffset,
                     destinationRow,
                     source.Stride
@@ -74,6 +75,7 @@ public static class NuraProfileBitmapExtensions {
     ) {
         ArgumentNullException.ThrowIfNull(source);
         ValidateBitmap(source);
+        var pixels = source.IsPremultiplied ? source.Pixels : Premultiply(source.Pixels);
 
         BitmapSource bitmapSource = BitmapSource.Create(
             source.Width,
@@ -82,7 +84,7 @@ public static class NuraProfileBitmapExtensions {
             dpiY,
             PixelFormats.Pbgra32,
             palette: null,
-            pixels: source.Pixels,
+            pixels: pixels,
             stride: source.Stride
         );
 
@@ -125,4 +127,39 @@ public static class NuraProfileBitmapExtensions {
             );
         }
     }
+
+    private static byte[] Premultiply(byte[] source) {
+        var pixels = new byte[source.Length];
+
+        for (var index = 0; index < source.Length; index += 4) {
+            var alpha = source[index + 3];
+            pixels[index] = Multiply(source[index], alpha);
+            pixels[index + 1] = Multiply(source[index + 1], alpha);
+            pixels[index + 2] = Multiply(source[index + 2], alpha);
+            pixels[index + 3] = alpha;
+        }
+
+        return pixels;
+    }
+
+    private static byte[] Unpremultiply(byte[] source) {
+        var pixels = new byte[source.Length];
+
+        for (var index = 0; index < source.Length; index += 4) {
+            var alpha = source[index + 3];
+            pixels[index] = Unmultiply(source[index], alpha);
+            pixels[index + 1] = Unmultiply(source[index + 1], alpha);
+            pixels[index + 2] = Unmultiply(source[index + 2], alpha);
+            pixels[index + 3] = alpha;
+        }
+
+        return pixels;
+    }
+
+    private static byte Multiply(byte colour, byte alpha) =>
+        (byte)((colour * alpha + (byte.MaxValue / 2)) / byte.MaxValue);
+
+    private static byte Unmultiply(byte colour, byte alpha) => alpha == 0
+        ? (byte)0
+        : (byte)Math.Min(byte.MaxValue, ((colour * byte.MaxValue) + (alpha / 2)) / alpha);
 }

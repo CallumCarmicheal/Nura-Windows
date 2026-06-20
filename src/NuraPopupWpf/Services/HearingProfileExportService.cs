@@ -24,17 +24,28 @@ public sealed class HearingProfileExportService {
         var exportDirectory = Path.Combine(Environment.CurrentDirectory, "renders", exportDate);
         Directory.CreateDirectory(exportDirectory);
 
-        foreach (var device in devices) {
-            foreach (var profile in device.Profiles) {
-                var fileName = $"{SanitizeFileName(device.Name)} - {SanitizeFileName(profile.Name)}.png";
-                var filePath = Path.Combine(exportDirectory, fileName);
-                var bitmap = useBitmapRenderer
-                    ? _bitmapRenderer.Render(profile.VisualisationData, 1.0, renderSize, 1.0).ToBitmapSource()
-                    : RenderShapeBitmap(profile, renderSize);
+        void render(bool transparent) {
+            foreach (var device in devices) {
+                foreach (var profile in device.Profiles) {
+                    var fileName = $"{SanitizeFileName(device.Name)} - {SanitizeFileName(profile.Name)}{(transparent ? ".transparent" : "")}.png";
+                    var filePath = Path.Combine(exportDirectory, fileName);
 
-                SaveBitmap(filePath, bitmap);
+                    BitmapSource bitmap = null!;
+
+                    if (useBitmapRenderer) {
+                        bitmap = _bitmapRenderer.Render(profile.VisualisationData, 1.0, renderSize, useTransparency: transparent).ToBitmapSource();
+                    } else {
+                        bitmap = RenderShapeBitmap(profile, renderSize);
+                    }
+
+                    SaveBitmap(filePath, bitmap);
+                }
             }
         }
+        
+        // Render both transparent and white background.
+        render(transparent: false);
+        render(transparent: true);
 
         return exportDirectory;
     }

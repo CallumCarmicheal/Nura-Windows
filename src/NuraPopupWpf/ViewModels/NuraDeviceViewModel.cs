@@ -959,7 +959,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             var profile = visualisation is { Valid: true }
                 ? new ProfileModel(name, visualisation)
                 : GetFallbackProfile(name, profileId);
-            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20).ToBitmapSource();
+            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20, useTransparency: true).ToBitmapSource();
             profiles.Add(profile);
         }
 

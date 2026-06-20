@@ -87,7 +87,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         Devices = [];
 
         foreach (var profile in Profiles.Values) {
-            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20).ToBitmapSource();
+            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20, useTransparency: true).ToBitmapSource();
         }
 
         InitializeEmptyCurrentSelection();

@@ -496,7 +496,7 @@ public sealed class ProfileVisualControl : FrameworkElement {
                 profileBlendProgress: blend,
                 personalisationProgress: mode,
                 size: renderSize,
-                immersionValue: 0.0);
+                useTransparency: true);
 
         var bitmap = rawBitmap.ToBitmapSource();
 

@@ -42,7 +42,7 @@ public static class AnsiTable {
 
         AppendRow(
             sb,
-            widths.Select(w => new string('-', Math.Max(1, w))),
+            widths.Select(w => new string('─', Math.Max(1, w))),
             widths,
             joiner
         );

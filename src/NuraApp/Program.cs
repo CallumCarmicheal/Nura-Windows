@@ -730,8 +730,8 @@ static class Program {
         List<string> renders = new List<string>();
 
         foreach (var (idx, vis) in device.Profiles.Visualisations) {
-            var render = ProfileBitmapRenderer.Render(vis, 1, 60, 1);
-            var ansiText = render.TrimToVisibleSquare().BuildAnsiConsoleString(alphaCutoff: 128);
+            var render = ProfileBitmapRenderer.Render(vis, 1, 60, useTransparency: true);
+            var ansiText = render.TrimToVisibleSquare(padding: 2).BuildAnsiConsoleString(alphaCutoff: 1);
             renders.Add(ansiText);
         }
 

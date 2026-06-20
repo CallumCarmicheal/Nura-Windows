@@ -12,6 +12,7 @@ internal sealed class ProfileVisualisationTests {
         ReferenceCurve_UsesNativeWrappedPhase();
         ReferenceCurve_CalculatesNativeSignatureOffset();
         ReferenceBitmap_UsesOpaqueTopOriginOutput();
+        ReferenceBitmap_OptInTransparency_UsesPremultipliedPixels();
         ReferenceBitmap_MatchesAndroidFixture_WhenAvailable();
     }
 
@@ -69,6 +70,21 @@ internal sealed class ProfileVisualisationTests {
         var top = ReadPixel(bitmap, 32, 13);
         var bottom = ReadPixel(bitmap, 32, 50);
         AssertTrue(top != bottom, "Top-origin renderer should preserve the native vertical orientation.");
+    }
+
+    private static void ReferenceBitmap_OptInTransparency_UsesPremultipliedPixels() {
+        var profile = CreateSyntheticProfile();
+        var bitmap = new NuraProfileBitmapRenderer().RenderThumbnail(profile, 64, useTransparency: true);
+
+        AssertTrue(bitmap.IsPremultiplied, "Transparent renderer output must be premultiplied BGRA.");
+        AssertTrue(bitmap.Pixels.Where((_, index) => (index & 3) == 3).Any(alpha => alpha < byte.MaxValue), "Transparent output should contain non-opaque pixels.");
+
+        for (var index = 0; index < bitmap.Pixels.Length; index += 4) {
+            var alpha = bitmap.Pixels[index + 3];
+            AssertTrue(bitmap.Pixels[index] <= alpha, "Premultiplied blue must not exceed alpha.");
+            AssertTrue(bitmap.Pixels[index + 1] <= alpha, "Premultiplied green must not exceed alpha.");
+            AssertTrue(bitmap.Pixels[index + 2] <= alpha, "Premultiplied red must not exceed alpha.");
+        }
     }
 
     private static void ReferenceBitmap_MatchesAndroidFixture_WhenAvailable() {
