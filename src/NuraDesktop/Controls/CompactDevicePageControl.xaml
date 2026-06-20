@@ -56,7 +56,13 @@
                                                                     Height="18"
                                                                     CornerRadius="9"
                                                                     Background="#18FF57B9">
-                                                                <Image Source="{Binding CurrentProfile.Thumbnail}" Width="16" Height="16" Stretch="Fill" />
+                                                                <local:ProfileVisualControl Width="16" Height="16"
+                                                                                            FromProfile="{Binding CurrentProfile}"
+                                                                                            ToProfile="{Binding CurrentProfile}"
+                                                                                            ProfileBlendProgress="1"
+                                                                                            ModeProgress="1"
+                                                                                            BackgroundMode="Transparent"
+                                                                                            UseBitmapRenderer="{Binding UseBitmapProfileRenderer}" />
                                                             </Border>
                                                             <TextBlock Text="{Binding CurrentProfile.Name}"
                                                                        Margin="8,0,0,0"
@@ -116,11 +122,16 @@
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
-                                                <Border Width="64"
-                                                        Height="64"
+                                                <Border Width="64" Height="64"
                                                         CornerRadius="19"
-                                                        Background="#18FF57B9">
-                                                    <Image Source="{Binding Thumbnail}" Width="64" Height="64" Stretch="Fill" />
+                                                        Background="#18FF57B9"
+                                                        ClipToBounds="True">
+                                                    <local:ProfileVisualControl Width="64" Height="64"
+                                                                                FromProfile="{Binding}" ToProfile="{Binding}"
+                                                                                ProfileBlendProgress="1" ModeProgress="1"
+                                                                                BackgroundMode="Transparent"
+                                                                                UseBitmapRenderer="{Binding DataContext.UseBitmapProfileRenderer,
+                                                                                                            RelativeSource={RelativeSource AncestorType=ListBox}}" />
                                                 </Border>
                                                 <TextBlock Text="{Binding Name}" Margin="8,0,0,0" Foreground="White" VerticalAlignment="Center" />
                                             </StackPanel>
