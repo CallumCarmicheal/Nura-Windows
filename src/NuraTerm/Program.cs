@@ -8,7 +8,7 @@ using System.Windows.Media.Animation;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
 
-using NuraApp;
+using NuraTerm;
 
 using NuraLib;
 using NuraLib.Configuration;

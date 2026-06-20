@@ -5,8 +5,8 @@ namespace NuraLib.Rendering;
 /// <summary>
 /// Reproduces the profile-data path used by the Android native visualisation renderer.
 /// </summary>
-internal static class NuraProfileReferenceCurve {
-    internal const int TextureSampleCount = 512;
+public static class NuraProfileReferenceCurve {
+    public const int TextureSampleCount = 512;
     private const double PackingScale = 1.0039369473;
 
     internal static double[] CreateCombinedValues(NuraProfileVisualisationData profile) {
@@ -139,4 +139,4 @@ internal static class NuraProfileReferenceCurve {
     private static double Lerp(double from, double to, double amount) => from + ((to - from) * amount);
 }
 
-internal readonly record struct NuraProfilePackedSample(double Red, double Green, double Blue);
+public readonly record struct NuraProfilePackedSample(double Red, double Green, double Blue);

@@ -1,5 +1,5 @@
 ﻿
-namespace NuraApp;
+namespace NuraTerm;
 
 using System;
 using System.Collections.Generic;

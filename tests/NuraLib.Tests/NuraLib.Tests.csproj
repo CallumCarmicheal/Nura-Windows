@@ -9,8 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\NuraDesktop\NuraDesktop.csproj" />
     <ProjectReference Include="..\..\src\NuraLib\NuraLib.csproj" />
-    <ProjectReference Include="..\..\src\NuraPopupWpf\NuraPopupWpf.csproj" />
   </ItemGroup>
 
 </Project>

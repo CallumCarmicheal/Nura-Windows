@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace NuraApp;
+namespace NuraTerm;
 
 using NuraLib.Rendering;
 

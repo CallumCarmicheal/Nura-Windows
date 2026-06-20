@@ -2,7 +2,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace NuraApp;
+namespace NuraTerm;
 
 public static class AnsiTable {
     private static readonly Regex AnsiRegex =
