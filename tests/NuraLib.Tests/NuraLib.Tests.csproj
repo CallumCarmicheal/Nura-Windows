@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NuraLib\NuraLib.csproj" />
+    <ProjectReference Include="..\..\src\NuraPopupWpf\NuraPopupWpf.csproj" />
   </ItemGroup>
 
 </Project>
