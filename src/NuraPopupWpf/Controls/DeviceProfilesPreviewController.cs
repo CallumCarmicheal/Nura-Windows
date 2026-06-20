@@ -146,8 +146,6 @@ internal sealed class DeviceProfilesPreviewController : IDisposable {
                 ToProfile = profile,
                 ProfileBlendProgress = 1.0,
                 ModeProgress = 1.0,
-                ImmersionValue = 1,
-                RenderShadow = true,
                 UseBitmapRenderer = _useBitmapRendererAccessor(),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center

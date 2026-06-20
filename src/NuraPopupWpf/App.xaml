@@ -305,6 +305,13 @@
                                     CornerRadius="14"
                                     Background="{StaticResource AccentGradientBrush}"
                                     Opacity="0" />
+                            <Border x:Name="PendingGlow"
+                                    Margin="-2"
+                                    CornerRadius="17"
+                                    BorderBrush="#CFFFFFFF"
+                                    BorderThickness="1"
+                                    Opacity="0"
+                                    IsHitTestVisible="False" />
                             <Ellipse x:Name="Thumb"
                                      Width="22"
                                      Height="22"
@@ -373,6 +380,25 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Track" Property="Opacity" Value="0.9" />
                             </Trigger>
+                            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" Value="True">
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#BFFFFFFF" />
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard x:Name="PendingTogglePulse">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="PendingGlow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             From="0.12"
+                                                             To="0.72"
+                                                             Duration="0:0:0.65"
+                                                             AutoReverse="True"
+                                                             RepeatBehavior="Forever" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <RemoveStoryboard BeginStoryboardName="PendingTogglePulse" />
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>

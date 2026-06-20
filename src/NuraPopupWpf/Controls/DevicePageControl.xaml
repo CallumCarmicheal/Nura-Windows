@@ -13,7 +13,7 @@
             <controls:ExpandedDevicePageControl />
         </DataTemplate>
     </UserControl.Resources>
-    <ContentControl Margin="0,16"
+    <ContentControl Margin="0,0"
                     Content="{Binding}">
         <ContentControl.Style>
             <Style TargetType="ContentControl">

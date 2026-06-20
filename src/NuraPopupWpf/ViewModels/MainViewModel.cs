@@ -43,7 +43,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     private bool _animateProfileBlend;
     private bool _isAnimationRunning;
 
-    private bool _isExpanded;
+    private bool _isExpanded = true;
     private bool _isDevicePage = true;
     private NuraDeviceViewModel _currentDevice = null!;
     private ProfileModel _currentProfile = null!;
@@ -55,8 +55,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     private double _visualModeProgress = 1.0;
     private bool _isSerialVisible;
     private bool _isCompactProfileSelectorOpen;
-    private bool _useBitmapProfileRenderer;
-    private bool _isProfileMorphing;
+    private bool _useBitmapProfileRenderer = false;
     private int _profileBandLayoutIndex = 1;
     private bool _showProfileBackgroundHaze = true;
     private bool _showDisconnectedDeviceProfilePreview;
@@ -75,10 +74,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     private RememberExpandTypeOption _selectedRememberExpandTypeOption = null!;
 
     private MainViewModel(PopupAppStoragePaths storagePaths) {
-        _appSettingsStore = new AppSettingStore(
-            storagePaths.AppSettingsPath,
-            storagePaths.LegacyAppSettingsPath,
-            storagePaths.LegacyWindowPreferencesPath);
+        _appSettingsStore = new AppSettingStore(storagePaths.AppSettingsPath);
+
         _appSettings = _appSettingsStore.Load();
         _windowAnchorOptions = new ObservableCollection<WindowAnchorOption>(BuildWindowAnchorOptions());
         _windowAnchorEdgeOptions = new ObservableCollection<WindowAnchorEdgeOption>(BuildWindowAnchorEdgeOptions());
@@ -86,9 +83,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         Profiles = BuildProfiles();
         Devices = [];
 
-        foreach (var profile in Profiles.Values) {
-            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20, useTransparency: true).ToBitmapSource();
-        }
+        // Re-render the thumbnails
+        foreach (var profile in Profiles.Values) 
+            profile.RenderThumbnail(_renderer);
 
         InitializeEmptyCurrentSelection();
         _selectedWindowAnchorOption = _windowAnchorOptions.FirstOrDefault(option => option.Mode == _appSettings.Preferences.AnchorMode) ?? _windowAnchorOptions[0];
@@ -273,7 +270,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             OnPropertyChanged(nameof(IsPersonalised));
             OnPropertyChanged(nameof(ImmersionIndex));
             OnPropertyChanged(nameof(CurrentImmersionValue));
-            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
             OnPropertyChanged(nameof(IsCurrentDeviceConnected));
             OnPropertyChanged(nameof(IsCurrentDeviceDisconnected));
             OnPropertyChanged(nameof(ShowDisconnectedDevicePlaceholder));
@@ -360,17 +356,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             _pendingImmersionIndex = Math.Clamp(value, 0, 6);
             OnPropertyChanged(nameof(ImmersionIndex));
             OnPropertyChanged(nameof(CurrentImmersionValue));
-            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
             OnPropertyChanged(nameof(HasPendingImmersionChange));
-            UpdateProfileImage();
 
             ScheduleImmersionApply(CurrentDevice, _pendingImmersionIndex.Value);
         }
     }
 
     public int CurrentImmersionValue => ImmersionValueFromIndex(ImmersionIndex);
-
-    public int CurrentVisualImmersionValue => UseDisconnectedDeviceVisualDefaults ? 0 : CurrentImmersionValue;
 
     public bool IsSerialVisible {
         get => _isSerialVisible;
@@ -425,11 +417,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
                 OnPropertyChanged(nameof(CanInteractWithCurrentDeviceControls));
                 OnPropertyChanged(nameof(ShouldBlurCurrentDeviceControls));
                 OnPropertyChanged(nameof(DisconnectedDevicePreviewButtonText));
-                OnPropertyChanged(nameof(CurrentVisualImmersionValue));
-
-                if (IsCurrentDeviceDisconnected) {
-                    UpdateProfileImage();
-                }
             }
         }
     }
@@ -489,11 +476,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         }
     }
 
-    public string ActiveProfileRendererLabel => UseBitmapProfileRenderer ? "Bitmap renderer" : "Shape renderer";
+    public string ActiveProfileRendererLabel => UseBitmapProfileRenderer ? "Reference bitmap renderer" : "Native contour renderer";
 
     public string ProfileRendererSubtitle => UseBitmapProfileRenderer
-        ? "Use the nura renderer (slower)."
-        : "Use the Shape renderer (faster but not as accurate).";
+        ? "Pixel-reference output matching the Android static renderer."
+        : "Fast shape based contours using the native profile curve and palette.";
 
     public string ProfileBandLayoutSubtitle => ProfileBandLayoutIndex switch {
         0 => "Expanded view only. Show the circular guide bands.",
@@ -580,11 +567,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     public string ExportStatusText {
         get => _exportStatusText;
         private set => SetProperty(ref _exportStatusText, value);
-    }
-
-    public bool IsProfileMorphing {
-        get => _isProfileMorphing;
-        private set => SetProperty(ref _isProfileMorphing, value);
     }
 
     public bool IsCurrentDeviceConnected => CurrentDevice.IsConnected;
@@ -690,7 +672,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             OnPropertyChanged(nameof(CanInteractWithCurrentDeviceControls));
             OnPropertyChanged(nameof(ShouldBlurCurrentDeviceControls));
             OnPropertyChanged(nameof(DisconnectedDevicePreviewButtonText));
-            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
 
             UpdateProfileImage();
         }
@@ -703,13 +684,39 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         if (e.PropertyName == nameof(DeviceModel.ImmersionIndex)) {
             OnPropertyChanged(nameof(ImmersionIndex));
             OnPropertyChanged(nameof(CurrentImmersionValue));
-            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
         }
 
         if (e.PropertyName == nameof(DeviceModel.Profiles)) {
             OnPropertyChanged(nameof(CurrentProfiles));
             OnPropertyChanged(nameof(CurrentProfileCount));
+            if (!CurrentDevice.IsProfilePending) {
+                SyncCurrentProfileSelectionFromCurrentDevice(animate: false);
+            }
+        }
+
+        if (e.PropertyName == nameof(NuraDeviceViewModel.CurrentProfileId) && !CurrentDevice.IsProfilePending) {
             SyncCurrentProfileSelectionFromCurrentDevice(animate: false);
+        }
+
+        if (e.PropertyName == nameof(NuraDeviceViewModel.DisplayIsPersonalised)) {
+            OnPropertyChanged(nameof(SelectedMode));
+            OnPropertyChanged(nameof(IsPersonalised));
+        }
+
+        if (e.PropertyName is nameof(NuraDeviceViewModel.DisplayImmersionIndex) or nameof(NuraDeviceViewModel.IsImmersionPending)) {
+            OnPropertyChanged(nameof(ImmersionIndex));
+            OnPropertyChanged(nameof(CurrentImmersionValue));
+            OnPropertyChanged(nameof(HasPendingImmersionChange));
+        }
+
+        if (e.PropertyName == nameof(NuraDeviceViewModel.HasPendingChanges)) {
+            OnPropertyChanged(nameof(CurrentDeviceHasPendingChanges));
+        }
+
+        if (e.PropertyName is nameof(NuraDeviceViewModel.DisplayAncLevel) or nameof(NuraDeviceViewModel.IsAncLevelPending)) {
+            OnPropertyChanged(nameof(CurrentAncLevelValue));
+            OnPropertyChanged(nameof(CurrentAncLevelText));
+            OnPropertyChanged(nameof(HasPendingAncLevelChange));
         }
 
         if (e.PropertyName == nameof(DeviceModel.AncLevel)) {
@@ -765,7 +772,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         _animationFromMode = visualModeProgress;
         _animationToMode = GetTargetVisualModeProgress();
         _animateProfileBlend = profileChanged && !ReferenceEquals(visualProfile, _currentProfile);
-        IsProfileMorphing = _animateProfileBlend;
         _animationDuration = TimeSpan.FromMilliseconds(profileChanged ? 520 : 420);
 
         if (!profileChanged && !modeChanged) {
@@ -791,7 +797,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
             StopAnimationLoop();
             _displayedProfile = _currentProfile;
             _displayedModeProgress = GetTargetVisualModeProgress();
-            IsProfileMorphing = false;
             VisualFromProfile = _currentProfile;
             VisualToProfile = _currentProfile;
             VisualProfileBlendProgress = 1.0;
@@ -853,7 +858,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         StopAnimationLoop();
         _displayedProfile = _currentProfile;
         _displayedModeProgress = GetTargetVisualModeProgress();
-        IsProfileMorphing = false;
         VisualFromProfile = _currentProfile;
         VisualToProfile = _currentProfile;
         VisualProfileBlendProgress = 1.0;

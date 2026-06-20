@@ -13,6 +13,8 @@ public sealed class AppPreferences {
 
     public RememberExpandType RememberExpandType { get; set; } = RememberExpandType.BasedOnPosition;
 
+    public bool DoNotShowPreReleaseWarning { get; set; }
+
     public double? LastLeft { get; set; }
 
     public double? LastTop { get; set; }

@@ -1,6 +1,9 @@
 using NuraLib.Devices;
+using NuraLib.Rendering;
 
 using System.Windows.Media;
+
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace NuraPopupWpf.Models;
 
@@ -20,6 +23,14 @@ public sealed class ProfileModel {
     public ProfileModel(string name, NuraProfileVisualisationData visualisationData) {
         Name = name;
         VisualisationData = visualisationData;
+    }
+
+    public void RenderThumbnail(NuraProfileBitmapRenderer renderer, bool onlyRenderIfNull = true) {
+        // Skip rendering the thumbnail again if not required
+        if (onlyRenderIfNull && Thumbnail != null)
+            return;
+
+        Thumbnail = renderer.Render(VisualisationData, 48, useTransparency: true).ToBitmapSource();
     }
 
     public override string ToString() => Name;

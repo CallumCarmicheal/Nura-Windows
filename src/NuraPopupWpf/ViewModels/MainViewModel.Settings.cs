@@ -34,10 +34,10 @@ public sealed partial class MainViewModel {
 
     public bool CanChangeImmersionControl => CurrentDevice.CanChangeImmersionControl;
 
-    public bool HasPendingImmersionChange => _pendingImmersionIndex.HasValue && _pendingImmersionIndex.Value != CurrentDevice.ImmersionIndex;
+    public bool HasPendingImmersionChange => _pendingImmersionIndex.HasValue || CurrentDevice.IsImmersionPending;
 
     public int CurrentAncLevelValue {
-        get => _pendingAncLevelValue ?? CurrentDevice.AncLevel ?? 0;
+        get => _pendingAncLevelValue ?? CurrentDevice.DisplayAncLevel ?? 0;
         set {
             var nextValue = Math.Clamp(value, 0, 4);
             if (CurrentAncLevelValue == nextValue) {
@@ -52,8 +52,7 @@ public sealed partial class MainViewModel {
     }
 
     public bool HasPendingAncLevelChange =>
-        _pendingAncLevelValue.HasValue &&
-        _pendingAncLevelValue.Value != (CurrentDevice.AncLevel ?? 0);
+        _pendingAncLevelValue.HasValue || CurrentDevice.IsAncLevelPending;
 
     public string CurrentAncLevelText {
         get {
@@ -133,7 +132,6 @@ public sealed partial class MainViewModel {
         OnPropertyChanged(nameof(IsPersonalised));
         OnPropertyChanged(nameof(ImmersionIndex));
         OnPropertyChanged(nameof(CurrentImmersionValue));
-        OnPropertyChanged(nameof(CurrentVisualImmersionValue));
         OnPropertyChanged(nameof(IsCurrentDeviceConnected));
         OnPropertyChanged(nameof(IsCurrentDeviceDisconnected));
         OnPropertyChanged(nameof(ShowDisconnectedDevicePlaceholder));
@@ -145,6 +143,7 @@ public sealed partial class MainViewModel {
         OnPropertyChanged(nameof(CurrentDeviceStatusText));
         OnPropertyChanged(nameof(CurrentDeviceStatusTone));
         OnPropertyChanged(nameof(IsCurrentDeviceStatusVisible));
+        OnPropertyChanged(nameof(CurrentDeviceHasPendingChanges));
         OnPropertyChanged(nameof(CurrentDeviceReadinessText));
         OnPropertyChanged(nameof(ShowAncControl));
         OnPropertyChanged(nameof(ShowPassthroughControl));
@@ -198,20 +197,19 @@ public sealed partial class MainViewModel {
         _pendingDial ?? CurrentDevice.Dial ?? new NuraDialConfiguration();
 
     private async Task ApplyPersonalisationModeAsync(bool isPersonalised) {
-        if (CurrentDevice.IsPersonalised == isPersonalised) {
+        if (CurrentDevice.DisplayIsPersonalised == isPersonalised) {
             return;
         }
 
-        await CurrentDevice.ApplyPersonalisationAsync(isPersonalised);
+        var operation = CurrentDevice.ApplyPersonalisationAsync(isPersonalised);
         OnPropertyChanged(nameof(SelectedMode));
         OnPropertyChanged(nameof(IsPersonalised));
         StartProfileAnimation(profileChanged: false, modeChanged: true);
-        RefreshCurrentDeviceBindings();
+        await operation;
     }
 
     private async Task ApplyCurrentProfileSelectionAsync(int profileId) {
         await CurrentDevice.SelectProfileByIndexAsync(profileId);
-        RefreshCurrentDeviceBindings();
     }
 
     private void ScheduleImmersionApply(NuraDeviceViewModel device, int targetIndex) {
@@ -230,20 +228,18 @@ public sealed partial class MainViewModel {
         try {
             // The headset takes about a second to apply an immersion change. Coalesce drag updates.
             await Task.Delay(TimeSpan.FromSeconds(1), cancellation.Token);
-            await device.ApplyImmersionIndexAsync(targetIndex, cancellation.Token);
-
             if (cancellation.IsCancellationRequested ||
                 !ReferenceEquals(CurrentDevice, device) ||
                 _pendingImmersionIndex != targetIndex) {
                 return;
             }
 
+            var operation = device.ApplyImmersionIndexAsync(targetIndex, cancellation.Token);
             _pendingImmersionIndex = null;
             OnPropertyChanged(nameof(ImmersionIndex));
             OnPropertyChanged(nameof(CurrentImmersionValue));
-            OnPropertyChanged(nameof(CurrentVisualImmersionValue));
             OnPropertyChanged(nameof(HasPendingImmersionChange));
-            UpdateProfileImage();
+            await operation;
         } catch (OperationCanceledException) when (cancellation.IsCancellationRequested) {
         } finally {
             if (ReferenceEquals(_immersionApplyCts, cancellation)) {
@@ -263,18 +259,15 @@ public sealed partial class MainViewModel {
     }
 
     private async Task ToggleAncAsync() {
-        await CurrentDevice.ApplyAncEnabledAsync(!CurrentDevice.AncEnabled);
-        RefreshCurrentDeviceBindings();
+        await CurrentDevice.ApplyAncEnabledAsync(!CurrentDevice.DisplayAncEnabled);
     }
 
     private async Task TogglePassthroughAsync() {
-        await CurrentDevice.ApplyPassthroughEnabledAsync(!CurrentDevice.SocialMode);
-        RefreshCurrentDeviceBindings();
+        await CurrentDevice.ApplyPassthroughEnabledAsync(!CurrentDevice.DisplaySocialMode);
     }
 
     private async Task ToggleSpatialAsync() {
-        await CurrentDevice.ApplySpatialEnabledAsync(!CurrentDevice.SpatialEnabled);
-        RefreshCurrentDeviceBindings();
+        await CurrentDevice.ApplySpatialEnabledAsync(!CurrentDevice.DisplaySpatialEnabled);
     }
 
     private async Task ApplyAncLevelAsync() {
@@ -290,8 +283,11 @@ public sealed partial class MainViewModel {
             return;
         }
 
-        await CurrentDevice.ApplyTouchButtonsAsync(CurrentTouchButtonDraft);
-        _pendingTouchButtons = null;
+        var submittedDraft = CurrentTouchButtonDraft;
+        await CurrentDevice.ApplyTouchButtonsAsync(submittedDraft);
+        if (Equals(_pendingTouchButtons, submittedDraft)) {
+            _pendingTouchButtons = null;
+        }
         RaiseInteractionSelectionPropertiesChanged();
     }
 
@@ -300,8 +296,11 @@ public sealed partial class MainViewModel {
             return;
         }
 
-        await CurrentDevice.ApplyDialAsync(CurrentDialDraft);
-        _pendingDial = null;
+        var submittedDraft = CurrentDialDraft;
+        await CurrentDevice.ApplyDialAsync(submittedDraft);
+        if (Equals(_pendingDial, submittedDraft)) {
+            _pendingDial = null;
+        }
         RaiseInteractionSelectionPropertiesChanged();
     }
 

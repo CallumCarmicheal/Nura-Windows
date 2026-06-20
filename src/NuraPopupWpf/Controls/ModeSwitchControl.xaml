@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:NuraPopupWpf.Controls"
              mc:Ignorable="d"
              d:Width="320"
              d:Height="48">
@@ -38,20 +39,20 @@
                 <Button Command="{Binding SelectModeCommand}"
                         CommandParameter="Neutral"
                         Style="{StaticResource ModeSwitchButtonStyle}">
-                    <TextBlock Text="Neutral"
-                           HorizontalAlignment="Center"
-                           FontSize="13"
-                           FontWeight="SemiBold"
-                           Foreground="White" />
+                    <local:PendingValueText Text="Neutral"
+                                            IsPending="{Binding CurrentDevice.IsPersonalisationPending}"
+                                            HorizontalAlignment="Center"
+                                            FontSize="13"
+                                            FontWeight="SemiBold" />
                 </Button>
                 <Button Command="{Binding SelectModeCommand}"
                         CommandParameter="Personalised"
                         Style="{StaticResource ModeSwitchButtonStyle}">
-                    <TextBlock Text="Personalised"
-                           HorizontalAlignment="Center"
-                           FontSize="13"
-                           FontWeight="SemiBold"
-                           Foreground="White" />
+                    <local:PendingValueText Text="Personalised"
+                                            IsPending="{Binding CurrentDevice.IsPersonalisationPending}"
+                                            HorizontalAlignment="Center"
+                                            FontSize="13"
+                                            FontWeight="SemiBold" />
                 </Button>
             </UniformGrid>
         </Grid>

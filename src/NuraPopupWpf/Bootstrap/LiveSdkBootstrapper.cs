@@ -68,11 +68,6 @@ public sealed class LiveSdkBootstrapper : IPopupAppBootstrapper {
             return storagePaths.NuraConfigPath;
         }
 
-        if (File.Exists(storagePaths.LegacyNuraConfigPath)) {
-            var legacyConfig = NuraConfigStore.Load(storagePaths.LegacyNuraConfigPath);
-            NuraConfigStore.Save(storagePaths.NuraConfigPath, legacyConfig);
-        }
-
         return storagePaths.NuraConfigPath;
     }
 }

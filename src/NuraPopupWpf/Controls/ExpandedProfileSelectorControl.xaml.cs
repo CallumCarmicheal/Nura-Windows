@@ -368,8 +368,6 @@ public partial class ExpandedProfileSelectorControl : UserControl {
             Height = 168,
             ProfileBlendProgress = 1.0,
             ModeProgress = 1.0,
-            ImmersionValue = 1,
-            RenderShadow = true,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };

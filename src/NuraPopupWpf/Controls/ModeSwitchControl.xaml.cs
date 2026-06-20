@@ -50,6 +50,10 @@ public partial class ModeSwitchControl : UserControl {
         if (e.PropertyName == nameof(MainViewModel.IsPersonalised)) {
             AnimatePill(immediate: false);
         }
+
+        if (e.PropertyName == nameof(MainViewModel.CurrentDeviceHasPendingChanges)) {
+            UpdatePendingPill();
+        }
     }
 
     private void AnimatePill(bool immediate) {
@@ -68,6 +72,7 @@ public partial class ModeSwitchControl : UserControl {
             PillTransform.BeginAnimation(TranslateTransform.XProperty, null);
             PillTransform.X = targetX;
             ApplyPillColorsImmediately(isPersonalised);
+            UpdatePendingPill();
             return;
         }
 
@@ -99,6 +104,24 @@ public partial class ModeSwitchControl : UserControl {
         PillTransform.BeginAnimation(TranslateTransform.XProperty, xAnimation);
 
         AnimatePillColorsDirectional(isPersonalised);
+        UpdatePendingPill();
+    }
+
+    private void UpdatePendingPill() {
+        SlidingPill.BeginAnimation(OpacityProperty, null);
+        SlidingPill.Opacity = 0.96;
+
+        if (_viewModel?.CurrentDevice.IsPersonalisationPending != true) {
+            return;
+        }
+
+        SlidingPill.BeginAnimation(OpacityProperty, new DoubleAnimation {
+            From = 0.58,
+            To = 0.98,
+            Duration = TimeSpan.FromMilliseconds(650),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever
+        });
     }
 
     private void ApplyPillColorsImmediately(bool isPersonalised) {

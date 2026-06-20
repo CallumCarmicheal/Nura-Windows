@@ -18,7 +18,7 @@ public partial class MainWindow : Window {
     private const double CollapsedShellWidth = 390.0;
     private const double CollapsedShellHeight = 760.0;
     private const double ExpandedShellWidth = 980.0;
-    private const double ExpandedShellHeight = 800.0;
+    private const double ExpandedShellHeight = 820.0;
     private const double OuterMarginSize = 40.0;
     private const uint MonitorDefaultToNearest = 2;
 

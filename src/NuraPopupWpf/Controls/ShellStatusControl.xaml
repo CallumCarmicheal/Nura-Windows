@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:models="clr-namespace:NuraPopupWpf.Models"
+             xmlns:local="clr-namespace:NuraPopupWpf.Controls"
              mc:Ignorable="d">
     <Grid>
         <Grid.RowDefinitions>
@@ -51,16 +52,16 @@
                    FontWeight="SemiBold"
                    Margin="0,5,0,0"
                    VerticalAlignment="Center" />
-        <TextBlock Grid.Row="1"
-                   Grid.Column="1"
-                   Text="{Binding CurrentDeviceStatusText}"
-                   Foreground="#BFFFFFFF"
-                   FontSize="12"
-                   Margin="0,5,0,0"
-                   TextTrimming="CharacterEllipsis"
-                   VerticalAlignment="Center">
-            <TextBlock.Style>
-                <Style TargetType="TextBlock">
+        <local:PendingValueText Grid.Row="1"
+                                Grid.Column="1"
+                                Text="{Binding CurrentDeviceStatusText}"
+                                IsPending="{Binding CurrentDeviceHasPendingChanges}"
+                                Foreground="#BFFFFFFF"
+                                FontSize="12"
+                                Margin="0,5,0,0"
+                                VerticalAlignment="Center">
+            <local:PendingValueText.Style>
+                <Style TargetType="local:PendingValueText">
                     <Setter Property="Foreground" Value="#BFFFFFFF" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding CurrentDeviceStatusTone}" Value="{x:Static models:StatusTone.Success}">
@@ -74,7 +75,7 @@
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
-            </TextBlock.Style>
-        </TextBlock>
+            </local:PendingValueText.Style>
+        </local:PendingValueText>
     </Grid>
 </UserControl>

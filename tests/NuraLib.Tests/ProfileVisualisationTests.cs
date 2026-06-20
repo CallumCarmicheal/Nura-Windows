@@ -11,6 +11,8 @@ internal sealed class ProfileVisualisationTests {
         ReferenceCurve_UsesNativeEdgeShapingWithoutNormalisation();
         ReferenceCurve_UsesNativeWrappedPhase();
         ReferenceCurve_CalculatesNativeSignatureOffset();
+        ReferenceFrame_UsesNativeContourRadiiAndModeProgress();
+        ReferenceFrame_BlendsProfilesBeforeTexturePacking();
         ReferenceBitmap_UsesOpaqueTopOriginOutput();
         ReferenceBitmap_OptInTransparency_UsesPremultipliedPixels();
         ReferenceBitmap_MatchesAndroidFixture_WhenAvailable();
@@ -61,9 +63,49 @@ internal sealed class ProfileVisualisationTests {
         AssertNear(-0.05, offset, 0.000000001, "Unexpected native signature offset.");
     }
 
+    private static void ReferenceFrame_UsesNativeContourRadiiAndModeProgress() {
+        var profile = CreateSyntheticProfile();
+        var enabled = NuraProfileReferenceFrameFactory.Create(profile, profile, 1.0, 1.0);
+        var disabled = NuraProfileReferenceFrameFactory.Create(profile, profile, 1.0, 0.0);
+        var signature = enabled.SampleSignature(0.0);
+
+        AssertNear(NuraProfileReferenceFrame.BaseRadius, enabled.GetContourRadius(0, signature), 0.000000001, "First contour must retain the native base radius.");
+        AssertNear(
+            NuraProfileReferenceFrame.BaseRadius + (signature * (5.0 / 6.0) * 2.0),
+            enabled.GetContourRadius(5, signature),
+            0.000000001,
+            "Final contour must use the native contour factor.");
+        AssertNear(NuraProfileReferenceFrame.BaseRadius, disabled.GetContourRadius(5, signature), 0.000000001, "Neutral mode must not distort profile radii.");
+        AssertTrue(disabled.GetContourOpacity(0) < enabled.GetContourOpacity(0), "Neutral mode must use the native reduced opacity.");
+    }
+
+    private static void ReferenceFrame_BlendsProfilesBeforeTexturePacking() {
+        var from = CreateSyntheticProfile();
+        var sourceTarget = CreateSyntheticProfile();
+        var target = sourceTarget with {
+            LeftData = sourceTarget.LeftData.Select(value => value + 8.0).ToArray(),
+            RightData = sourceTarget.RightData.Select(value => value - 5.0).ToArray(),
+            Colour = 0.80
+        };
+
+        var start = NuraProfileReferenceFrameFactory.Create(target, from, 0.0, 1.0);
+        var midpoint = NuraProfileReferenceFrameFactory.Create(target, from, 0.5, 1.0);
+        var end = NuraProfileReferenceFrameFactory.Create(target, from, 1.0, 1.0);
+
+        var startSignature = start.SampleSignature(0.375);
+        var midpointSignature = midpoint.SampleSignature(0.375);
+        var endSignature = end.SampleSignature(0.375);
+
+        AssertTrue(Math.Abs(startSignature - endSignature) > 0.0001, "Distinct profiles must produce distinct native signatures.");
+        AssertTrue(
+            midpointSignature >= Math.Min(startSignature, endSignature) - 0.01 &&
+            midpointSignature <= Math.Max(startSignature, endSignature) + 0.01,
+            "Profile blending must occur before texture packing and remain between endpoint signatures.");
+    }
+
     private static void ReferenceBitmap_UsesOpaqueTopOriginOutput() {
         var profile = CreateSyntheticProfile();
-        var bitmap = new NuraProfileBitmapRenderer().RenderThumbnail(profile, 64);
+        var bitmap = new NuraProfileBitmapRenderer().Render(profile, 64);
 
         AssertTrue(bitmap.Pixels.Where((_, index) => (index & 3) == 3).All(alpha => alpha == byte.MaxValue), "Native bitmap output should be opaque.");
 
@@ -74,7 +116,7 @@ internal sealed class ProfileVisualisationTests {
 
     private static void ReferenceBitmap_OptInTransparency_UsesPremultipliedPixels() {
         var profile = CreateSyntheticProfile();
-        var bitmap = new NuraProfileBitmapRenderer().RenderThumbnail(profile, 64, useTransparency: true);
+        var bitmap = new NuraProfileBitmapRenderer().Render(profile, 64, useTransparency: true);
 
         AssertTrue(bitmap.IsPremultiplied, "Transparent renderer output must be premultiplied BGRA.");
         AssertTrue(bitmap.Pixels.Where((_, index) => (index & 3) == 3).Any(alpha => alpha < byte.MaxValue), "Transparent output should contain non-opaque pixels.");
@@ -102,7 +144,7 @@ internal sealed class ProfileVisualisationTests {
         }
 
         var expected = LoadBgraPixels(fixturePath, 256);
-        var actual = new NuraProfileBitmapRenderer().RenderThumbnail(CreateSyntheticProfile(), 256).Pixels;
+        var actual = new NuraProfileBitmapRenderer().Render(CreateSyntheticProfile(), 256).Pixels;
         long totalError = 0;
         var largeErrorPixels = 0;
 

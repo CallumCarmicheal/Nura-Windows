@@ -65,6 +65,8 @@ public sealed partial class MainViewModel {
 
     public bool IsCurrentDeviceBusy => CurrentDevice.IsBusy;
 
+    public bool CurrentDeviceHasPendingChanges => CurrentDevice.HasPendingChanges;
+
     public string CurrentDeviceActionText => CurrentDevice.DisplayStatusText;
 
     public string CurrentDeviceStatusText => CurrentDevice.Id == "__empty__"
@@ -157,7 +159,7 @@ public sealed partial class MainViewModel {
         _devicePriorityIds.Clear();
 
         foreach (var profile in seedData.Profiles.Values) {
-            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20, useTransparency: true).ToBitmapSource();
+            profile.RenderThumbnail(_renderer);
         }
 
         foreach (var device in seedData.Devices) {
@@ -433,7 +435,7 @@ public sealed partial class MainViewModel {
 
     private void RenderProfileThumbnails(IEnumerable<ProfileModel> profiles) {
         foreach (var profile in profiles) {
-            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20, useTransparency: true).ToBitmapSource();
+            profile.RenderThumbnail(_renderer);
         }
     }
 

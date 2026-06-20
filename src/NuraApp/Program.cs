@@ -84,11 +84,11 @@ static class Program {
     private static async Task RunAsync() {
         var configPath = Path.Combine(
             Environment.CurrentDirectory,
-            "nura-config.json");
+            "settings.nura.json");
 
         AppSettingsPath = Path.Combine(
             Environment.CurrentDirectory,
-            "app-settings.json");
+            "settings.tui.json");
 
         AppSettings = LoadOrCreateAppSettings(AppSettingsPath, out var wasAppSettingsCreated);
 

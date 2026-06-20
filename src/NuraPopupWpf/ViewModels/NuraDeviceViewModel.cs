@@ -17,6 +17,9 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private readonly IReadOnlyList<ProfileModel> _fallbackProfiles;
     private readonly NuraProfileBitmapRenderer _renderer = new();
     private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private readonly Dictionary<PendingChangeKind, PendingChange> _pendingChanges = [];
+    private long _nextPendingGeneration;
+    private int _liveStateRefreshQueued;
     private bool _connectToNura;
     private bool _hasAuthenticatedWithNura;
     private bool _isBusy;
@@ -35,6 +38,22 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private CancellationTokenSource? _operationStatusResetCts;
     private string? _lastDebugStatusText;
     private StatusTone? _lastDebugStatusTone;
+
+    private enum PendingChangeKind {
+        Profile,
+        Personalisation,
+        Immersion,
+        Anc,
+        Passthrough,
+        AncLevel,
+        Spatial,
+        TouchButtons,
+        Dial
+    }
+
+    private enum PendingChangePhase { Queued, Applying }
+
+    private sealed record PendingChange(long Generation, object Target, string Description, PendingChangePhase Phase);
 
     private NuraDeviceViewModel(
         string id,
@@ -205,16 +224,24 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private bool HasOperationError => _operationStatusTone == StatusTone.Error &&
                                       !string.IsNullOrWhiteSpace(OperationStatusText);
 
-    public string DisplayStatusText => _isOperationStatusVisible || HasOperationError
+    public string DisplayStatusText => HasOperationError
         ? OperationStatusText
-        : ReadinessStatusText;
+        : HasPendingChanges
+            ? PendingChangeSummary
+            : _isOperationStatusVisible
+                ? OperationStatusText
+                : ReadinessStatusText;
 
-    public StatusTone DisplayStatusTone => _isOperationStatusVisible || HasOperationError
+    public StatusTone DisplayStatusTone => HasOperationError
         ? _operationStatusTone
-        : StatusTone.Neutral;
+        : HasPendingChanges
+            ? StatusTone.Information
+            : _isOperationStatusVisible
+                ? _operationStatusTone
+                : StatusTone.Neutral;
 
     // The shell status strip should not cover the visualiser with routine readiness text.
-    public bool IsDisplayStatusVisible => _isOperationStatusVisible || HasOperationError;
+    public bool IsDisplayStatusVisible => HasPendingChanges || _isOperationStatusVisible || HasOperationError;
 
     public bool CanChangeImmersionControl =>
         !IsLive || (LiveDevice is not null &&
@@ -269,6 +296,30 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     }
 
     public int? CurrentProfileId => LiveDevice?.Profiles.ProfileId;
+
+    public int? DisplayProfileId => GetPendingValue<int>(PendingChangeKind.Profile) ?? CurrentProfileId;
+    public bool DisplayAncEnabled => GetPendingValue<bool>(PendingChangeKind.Anc) ?? AncEnabled;
+    public bool DisplaySocialMode => GetPendingValue<bool>(PendingChangeKind.Passthrough) ?? SocialMode;
+    public bool DisplaySpatialEnabled => GetPendingValue<bool>(PendingChangeKind.Spatial) ?? SpatialEnabled;
+    public bool DisplayIsPersonalised => GetPendingValue<bool>(PendingChangeKind.Personalisation) ?? IsPersonalised;
+    public int DisplayImmersionIndex => GetPendingValue<int>(PendingChangeKind.Immersion) ?? ImmersionIndex;
+    public int? DisplayAncLevel => GetPendingValue<int>(PendingChangeKind.AncLevel) ?? AncLevel;
+    public string DisplayAncStatusText => DisplayAncEnabled ? "Active Noise Cancellation" : "Off";
+    public string DisplaySocialModeText => DisplaySocialMode ? "On" : "Off";
+    public string DisplaySpatialStatusText => DisplaySpatialEnabled ? "On" : "Off";
+    public bool IsProfilePending => IsPending(PendingChangeKind.Profile);
+    public bool IsPersonalisationPending => IsPending(PendingChangeKind.Personalisation);
+    public bool IsImmersionPending => IsPending(PendingChangeKind.Immersion);
+    public bool IsAncPending => IsPending(PendingChangeKind.Anc);
+    public bool IsPassthroughPending => IsPending(PendingChangeKind.Passthrough);
+    public bool IsAncLevelPending => IsPending(PendingChangeKind.AncLevel);
+    public bool IsSpatialPending => IsPending(PendingChangeKind.Spatial);
+    public bool IsTouchButtonsPending => IsPending(PendingChangeKind.TouchButtons);
+    public bool IsDialPending => IsPending(PendingChangeKind.Dial);
+    public bool HasPendingChanges => _pendingChanges.Count > 0;
+    public string PendingChangeSummary => _pendingChanges.Values.OrderBy(change => change.Generation)
+        .Select(change => $"{(change.Phase == PendingChangePhase.Queued ? "Queued" : "Applying")}: {change.Description}")
+        .FirstOrDefault() ?? string.Empty;
 
     public string DeviceFamilyText =>
         LiveDevice is null
@@ -471,8 +522,13 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         return EnsureReadyAsync(connectToNura, hasAuthenticatedWithNura, forceProvision: true, refreshAfterConnect: true, cancellationToken: cancellationToken);
     }
 
-    public Task SelectProfileByIndexAsync(int profileId, CancellationToken cancellationToken = default) {
-        return ExecuteLiveOperationAsync(
+    public async Task SelectProfileByIndexAsync(int profileId, CancellationToken cancellationToken = default) {
+        if (LiveDevice is null) {
+            return;
+        }
+
+        var pending = BeginPendingChange(PendingChangeKind.Profile, profileId, $"Profile {profileId + 1}");
+        await ExecuteLiveOperationAsync(
             async ct => {
                 if (LiveDevice is null) {
                     return;
@@ -480,8 +536,8 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
 
                 await LiveDevice.Profiles.SetProfileIdAsync(profileId, ct);
             },
-            cancellationToken,
-            rollbackToLiveStateOnFailure: true);
+            cancellationToken, rollbackToLiveStateOnFailure: true,
+            pendingKind: PendingChangeKind.Profile, pendingChange: pending);
     }
 
     public async Task ApplyPersonalisationAsync(bool isPersonalised, CancellationToken cancellationToken = default) {
@@ -495,12 +551,13 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             return;
         }
 
+        var pending = BeginPendingChange(PendingChangeKind.Personalisation, isPersonalised, isPersonalised ? "Personalised mode" : "Neutral mode");
         await ExecuteLiveOperationAsync(
             ct => LiveDevice.State.SetPersonalisationModeAsync(
                 isPersonalised ? NuraPersonalisationMode.Personalised : NuraPersonalisationMode.Neutral,
                 ct),
-            cancellationToken,
-            rollbackToLiveStateOnFailure: true);
+            cancellationToken, rollbackToLiveStateOnFailure: true,
+            pendingKind: PendingChangeKind.Personalisation, pendingChange: pending);
     }
 
     public async Task ApplyImmersionIndexAsync(int immersionIndex, CancellationToken cancellationToken = default) {
@@ -520,10 +577,11 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             return;
         }
 
+        var pending = BeginPendingChange(PendingChangeKind.Immersion, nextIndex, $"Immersion {nextIndex - 2:+#;-#;0}");
         await ExecuteLiveOperationAsync(
             ct => LiveDevice.State.SetImmersionLevelAsync(NuraImmersionLevelExtensions.FromRawIndex(nextIndex), ct),
-            cancellationToken,
-            rollbackToLiveStateOnFailure: true);
+            cancellationToken, rollbackToLiveStateOnFailure: true,
+            pendingKind: PendingChangeKind.Immersion, pendingChange: pending);
     }
 
     public async Task ApplyAncEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
@@ -537,10 +595,11 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             return;
         }
 
+        var pending = BeginPendingChange(PendingChangeKind.Anc, enabled, enabled ? "ANC on" : "ANC off");
         await ExecuteLiveOperationAsync(
             ct => LiveDevice.State.SetAncEnabledAsync(enabled, ct),
-            cancellationToken,
-            rollbackToLiveStateOnFailure: true);
+            cancellationToken, rollbackToLiveStateOnFailure: true,
+            pendingKind: PendingChangeKind.Anc, pendingChange: pending);
     }
 
     public async Task ApplyPassthroughEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
@@ -554,10 +613,11 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             return;
         }
 
+        var pending = BeginPendingChange(PendingChangeKind.Passthrough, enabled, enabled ? "Social mode on" : "Social mode off");
         await ExecuteLiveOperationAsync(
             ct => LiveDevice.State.SetPassthroughEnabledAsync(enabled, ct),
-            cancellationToken,
-            rollbackToLiveStateOnFailure: true);
+            cancellationToken, rollbackToLiveStateOnFailure: true,
+            pendingKind: PendingChangeKind.Passthrough, pendingChange: pending);
     }
 
     public async Task ApplySpatialEnabledAsync(bool enabled, CancellationToken cancellationToken = default) {
@@ -571,10 +631,11 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             return;
         }
 
+        var pending = BeginPendingChange(PendingChangeKind.Spatial, enabled, enabled ? "Spatial audio on" : "Spatial audio off");
         await ExecuteLiveOperationAsync(
             ct => LiveDevice.State.SetSpatialEnabledAsync(enabled, ct),
-            cancellationToken,
-            rollbackToLiveStateOnFailure: true);
+            cancellationToken, rollbackToLiveStateOnFailure: true,
+            pendingKind: PendingChangeKind.Spatial, pendingChange: pending);
     }
 
     public async Task ApplyAncLevelAsync(int level, CancellationToken cancellationToken = default) {
@@ -589,10 +650,11 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             return;
         }
 
+        var pending = BeginPendingChange(PendingChangeKind.AncLevel, nextLevel, $"ANC level {nextLevel}");
         await ExecuteLiveOperationAsync(
             ct => LiveDevice.State.SetAncLevelAsync(nextLevel, ct),
-            cancellationToken,
-            rollbackToLiveStateOnFailure: true);
+            cancellationToken, rollbackToLiveStateOnFailure: true,
+            pendingKind: PendingChangeKind.AncLevel, pendingChange: pending);
     }
 
     public async Task ApplyTouchButtonsAsync(NuraButtonConfiguration configuration, CancellationToken cancellationToken = default) {
@@ -606,10 +668,11 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             return;
         }
 
+        var pending = BeginPendingChange(PendingChangeKind.TouchButtons, configuration, "Touch button bindings");
         await ExecuteLiveOperationAsync(
             ct => LiveDevice.Configuration.SetTouchButtonsAsync(configuration, ct),
-            cancellationToken,
-            rollbackToLiveStateOnFailure: true);
+            cancellationToken, rollbackToLiveStateOnFailure: true,
+            pendingKind: PendingChangeKind.TouchButtons, pendingChange: pending);
     }
 
     public async Task ApplyDialAsync(NuraDialConfiguration configuration, CancellationToken cancellationToken = default) {
@@ -623,10 +686,11 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             return;
         }
 
+        var pending = BeginPendingChange(PendingChangeKind.Dial, configuration, "Dial bindings");
         await ExecuteLiveOperationAsync(
             ct => LiveDevice.Configuration.SetDialAsync(configuration, ct),
-            cancellationToken,
-            rollbackToLiveStateOnFailure: true);
+            cancellationToken, rollbackToLiveStateOnFailure: true,
+            pendingKind: PendingChangeKind.Dial, pendingChange: pending);
     }
 
     public async Task RefreshBatteryAsync(CancellationToken cancellationToken = default) {
@@ -656,21 +720,101 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         return ValueTask.CompletedTask;
     }
 
+    private PendingChange BeginPendingChange(PendingChangeKind kind, object target, string description) {
+        var change = new PendingChange(++_nextPendingGeneration, target, description, PendingChangePhase.Queued);
+        _pendingChanges[kind] = change;
+        PublishPendingStateChanged();
+        return change;
+    }
+
+    private bool IsCurrentPendingChange(PendingChangeKind kind, PendingChange change) =>
+        _pendingChanges.TryGetValue(kind, out var current) && current.Generation == change.Generation;
+
+    private void MarkPendingChangeApplying(PendingChangeKind kind, PendingChange change) {
+        if (!IsCurrentPendingChange(kind, change)) return;
+        _pendingChanges[kind] = change with { Phase = PendingChangePhase.Applying };
+        PublishPendingStateChanged();
+    }
+
+    private void ClearPendingChange(PendingChangeKind kind, PendingChange? expected = null) {
+        if (!_pendingChanges.TryGetValue(kind, out var current) ||
+            expected is not null && current.Generation != expected.Generation) return;
+        _pendingChanges.Remove(kind);
+        PublishPendingStateChanged();
+    }
+
+    private void ClearAllPendingChanges() {
+        if (_pendingChanges.Count == 0) return;
+        _pendingChanges.Clear();
+        PublishPendingStateChanged();
+    }
+
+    private bool IsPending(PendingChangeKind kind) => _pendingChanges.ContainsKey(kind);
+
+    private T? GetPendingValue<T>(PendingChangeKind kind) where T : struct =>
+        _pendingChanges.TryGetValue(kind, out var change) && change.Target is T value ? value : null;
+
+    private void ReconcilePendingChange<T>(PendingChangeKind kind, T? confirmed) where T : struct {
+        if (confirmed is not { } value || !_pendingChanges.TryGetValue(kind, out var change) ||
+            change.Target is not T target || !EqualityComparer<T>.Default.Equals(value, target)) return;
+        ClearPendingChange(kind, change);
+    }
+
+    private void PublishPendingStateChanged(bool publishDisplayStatus = true) {
+        OnPropertyChanged(nameof(DisplayProfileId));
+        OnPropertyChanged(nameof(DisplayAncEnabled));
+        OnPropertyChanged(nameof(DisplaySocialMode));
+        OnPropertyChanged(nameof(DisplaySpatialEnabled));
+        OnPropertyChanged(nameof(DisplayIsPersonalised));
+        OnPropertyChanged(nameof(DisplayImmersionIndex));
+        OnPropertyChanged(nameof(DisplayAncLevel));
+        OnPropertyChanged(nameof(DisplayAncStatusText));
+        OnPropertyChanged(nameof(DisplaySocialModeText));
+        OnPropertyChanged(nameof(DisplaySpatialStatusText));
+        OnPropertyChanged(nameof(IsProfilePending));
+        OnPropertyChanged(nameof(IsPersonalisationPending));
+        OnPropertyChanged(nameof(IsImmersionPending));
+        OnPropertyChanged(nameof(IsAncPending));
+        OnPropertyChanged(nameof(IsPassthroughPending));
+        OnPropertyChanged(nameof(IsAncLevelPending));
+        OnPropertyChanged(nameof(IsSpatialPending));
+        OnPropertyChanged(nameof(IsTouchButtonsPending));
+        OnPropertyChanged(nameof(IsDialPending));
+        OnPropertyChanged(nameof(HasPendingChanges));
+        OnPropertyChanged(nameof(PendingChangeSummary));
+
+        if (publishDisplayStatus)
+            PublishDisplayStatusChanged();
+    }
+
     private async Task<bool> ExecuteLiveOperationAsync(
         Func<CancellationToken, Task> operation,
         CancellationToken cancellationToken,
         bool rollbackToLiveStateOnFailure = false,
-        bool rethrowOnFailure = false
+        bool rethrowOnFailure = false,
+        PendingChangeKind? pendingKind = null,
+        PendingChange? pendingChange = null
     ) {
         if (LiveDevice is null) {
             return false;
         }
 
         await _operationGate.WaitAsync(cancellationToken);
+        if (pendingKind is { } queuedKind && pendingChange is not null && !IsCurrentPendingChange(queuedKind, pendingChange)) {
+            _operationGate.Release();
+            return true;
+        }
         IsBusy = true;
+        if (pendingKind is { } applyingKind && pendingChange is not null) {
+            MarkPendingChangeApplying(applyingKind, pendingChange);
+        }
 
         try {
             await operation(cancellationToken);
+            ApplyFromLiveDevice();
+            if (pendingKind is { } completedKind && pendingChange is not null) {
+                ClearPendingChange(completedKind, pendingChange);
+            }
             RefreshWarningState();
             if (LiveDevice.OperationStatus is null) {
                 OperationStatusText = "Ready.";
@@ -683,6 +827,10 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         } catch (Exception ex) {
             if (rollbackToLiveStateOnFailure) {
                 ApplyFromLiveDevice();
+            }
+
+            if (pendingKind is { } failedKind && pendingChange is not null) {
+                ClearPendingChange(failedKind, pendingChange);
             }
 
             SetOperationFailure(ex.Message);
@@ -721,9 +869,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         liveDevice.OperationStatusChanged -= OnLiveDeviceOperationStatusChanged;
     }
 
-    private async void OnLiveDeviceEvent(object? sender, EventArgs e) {
-        await RunOnUiThreadAsync(() => ApplyFromLiveDevice());
-    }
+    private void OnLiveDeviceEvent(object? sender, EventArgs e) => QueueLiveStateRefresh();
 
     private async void OnLiveDeviceOperationStatusChanged(object? sender, NuraValueChangedEventArgs<NuraDeviceOperationStatus?> e) {
         await RunOnUiThreadAsync(() => {
@@ -739,12 +885,14 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     }
 
     private void ApplyFromLiveDevice() {
-        if (LiveDevice is null) {
+        if (LiveDevice is null) 
             return;
-        }
-
+        
         Name = LiveDevice.Info.DisplayName;
         IsConnected = LiveDevice.IsConnected;
+
+        if (!IsConnected) ClearAllPendingChanges();
+
         SerialNumber = LiveDevice.Info.Serial;
         SoftwareVersion = LiveDevice.Info.FirmwareVersion.ToString(CultureInfo.InvariantCulture);
         BatteryLevel = LiveDevice.State.Battery?.BatteryPercentage;
@@ -757,28 +905,35 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
 
         if (LiveDevice.State.AncEnabled is bool ancEnabled) {
             AncEnabled = ancEnabled;
+            ReconcilePendingChange<bool>(PendingChangeKind.Anc, ancEnabled);
         }
 
         if (LiveDevice.State.PassthroughEnabled is bool passthroughEnabled) {
             SocialMode = passthroughEnabled;
+            ReconcilePendingChange<bool>(PendingChangeKind.Passthrough, passthroughEnabled);
         }
 
         if (LiveDevice.State.SpatialEnabled is bool spatialEnabled) {
             SpatialEnabled = spatialEnabled;
+            ReconcilePendingChange<bool>(PendingChangeKind.Spatial, spatialEnabled);
         }
 
         if (LiveDevice.State.PersonalisationMode is NuraPersonalisationMode mode) {
             IsPersonalised = mode == NuraPersonalisationMode.Personalised;
+            ReconcilePendingChange<bool>(PendingChangeKind.Personalisation, IsPersonalised);
         }
 
         if (LiveDevice.State.ImmersionLevel is NuraImmersionLevel immersionLevel) {
             ImmersionIndex = immersionLevel.ToRawIndex();
+            ReconcilePendingChange<int>(PendingChangeKind.Immersion, ImmersionIndex);
         }
 
         AncLevel = LiveDevice.State.AncLevel;
+        if (AncLevel is { } ancLevel) ReconcilePendingChange<int>(PendingChangeKind.AncLevel, ancLevel);
         TouchButtons = LiveDevice.Configuration.TouchButtons;
         Dial = LiveDevice.Configuration.Dial;
-        Profiles = BuildProfilesFromLiveDevice(LiveDevice);
+        if (LiveDevice.Profiles.ProfileId is { } profileId) ReconcilePendingChange<int>(PendingChangeKind.Profile, profileId);
+        if (!ProfilesMatchLiveDevice(LiveDevice)) Profiles = BuildProfilesFromLiveDevice(LiveDevice);
         HasLocalSession = LiveDevice.HasLocalSession;
         IsMonitoring = LiveDevice.IsMonitoring;
         RequiresProvisioning = LiveDevice.ProvisioningRequired || !LiveDevice.HasPersistentDeviceKey;
@@ -790,7 +945,29 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         OnPropertyChanged(nameof(CanUseFeatureControls));
         OnPropertyChanged(nameof(DeviceFamilyText));
         OnPropertyChanged(nameof(DeviceCapabilitySummary));
+
+        PublishPendingStateChanged(false);
+
         RaiseReadinessStatusChanged();
+    }
+
+    private void QueueLiveStateRefresh() {
+        if (Interlocked.Exchange(ref _liveStateRefreshQueued, 1) != 0) return;
+        _ = RunOnUiThreadAsync(() => {
+            Interlocked.Exchange(ref _liveStateRefreshQueued, 0);
+            ApplyFromLiveDevice();
+        });
+    }
+
+    private bool ProfilesMatchLiveDevice(ConnectedNuraDevice liveDevice) {
+        var profileCount = Math.Max(DefaultProfileSlotCount, (liveDevice.Profiles.ProfileId ?? -1) + 1);
+        if (liveDevice.Profiles.Names.Count > 0) profileCount = Math.Max(profileCount, liveDevice.Profiles.Names.Keys.Max() + 1);
+        if (liveDevice.Profiles.Visualisations.Count > 0) profileCount = Math.Max(profileCount, liveDevice.Profiles.Visualisations.Keys.Max() + 1);
+        if (Profiles.Count != profileCount) return false;
+        return Profiles.Select((profile, index) =>
+            profile.Name == (liveDevice.Profiles.Names.TryGetValue(index, out var name) ? name : $"Profile {index + 1}") &&
+            (!liveDevice.Profiles.Visualisations.TryGetValue(index, out var visualisation) || Equals(profile.VisualisationData, visualisation)))
+            .All(matches => matches);
     }
 
     private void ApplyOperationStatus(NuraDeviceOperationStatus? status) {
@@ -959,7 +1136,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             var profile = visualisation is { Valid: true }
                 ? new ProfileModel(name, visualisation)
                 : GetFallbackProfile(name, profileId);
-            profile.Thumbnail = _renderer.RenderThumbnail(profile.VisualisationData, 20, useTransparency: true).ToBitmapSource();
+            profile.RenderThumbnail(_renderer);
             profiles.Add(profile);
         }
 
