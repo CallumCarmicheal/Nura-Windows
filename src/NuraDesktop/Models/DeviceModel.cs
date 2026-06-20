@@ -1,7 +1,7 @@
 using NuraLib.Devices;
-using NuraPopupWpf.Infrastructure;
+using NuraDesktop.Infrastructure;
 
-namespace NuraPopupWpf.Models;
+namespace NuraDesktop.Models;
 
 public class DeviceModel : ObservableObject {
     private string _name;

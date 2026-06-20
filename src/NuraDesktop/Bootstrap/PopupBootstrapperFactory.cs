@@ -1,4 +1,4 @@
-namespace NuraPopupWpf.Bootstrap;
+namespace NuraDesktop.Bootstrap;
 
 public static class PopupBootstrapperFactory {
     public static PopupAppBootstrapMode ParseMode(string[] args) {

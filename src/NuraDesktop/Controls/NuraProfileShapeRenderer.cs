@@ -4,7 +4,7 @@ using System.Windows.Media;
 using NuraLib.Devices;
 using NuraLib.Rendering;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 public enum ProfileVisualBackgroundMode {
     Transparent,

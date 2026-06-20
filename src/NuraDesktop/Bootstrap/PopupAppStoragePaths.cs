@@ -1,7 +1,7 @@
 using System.IO;
 using System.Reflection;
 
-namespace NuraPopupWpf.Bootstrap;
+namespace NuraDesktop.Bootstrap;
 
 public sealed record class PopupAppStoragePaths(
     string RootDirectory,

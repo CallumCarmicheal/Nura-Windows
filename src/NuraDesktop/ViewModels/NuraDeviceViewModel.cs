@@ -6,10 +6,10 @@ using System.Windows.Threading;
 using NuraLib.Devices;
 using NuraLib.Rendering;
 
-using NuraPopupWpf.Models;
-using NuraPopupWpf.Services;
+using NuraDesktop.Models;
+using NuraDesktop.Services;
 
-namespace NuraPopupWpf.ViewModels;
+namespace NuraDesktop.ViewModels;
 
 public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private const int DefaultProfileSlotCount = 3;

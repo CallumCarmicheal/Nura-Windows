@@ -1,8 +1,8 @@
 using NuraLib.Devices;
-using NuraPopupWpf.Models;
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.Models;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf.Bootstrap;
+namespace NuraDesktop.Bootstrap;
 
 public static class PopupDemoSeedFactory {
     public static PopupDemoSeedData Create() {

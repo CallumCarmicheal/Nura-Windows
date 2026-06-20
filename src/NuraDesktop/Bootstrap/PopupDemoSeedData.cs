@@ -1,7 +1,7 @@
-using NuraPopupWpf.Models;
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.Models;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf.Bootstrap;
+namespace NuraDesktop.Bootstrap;
 
 public sealed record class PopupDemoSeedData(
     IReadOnlyDictionary<string, ProfileModel> Profiles,

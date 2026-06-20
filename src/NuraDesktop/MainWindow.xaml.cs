@@ -8,10 +8,10 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
-using NuraPopupWpf.Models;
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.Models;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf;
+namespace NuraDesktop;
 
 public partial class MainWindow : Window {
     private const double WindowMargin = 20.0;

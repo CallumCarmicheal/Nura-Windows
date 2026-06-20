@@ -1,7 +1,7 @@
 using NuraLib.Devices;
-using NuraPopupWpf.Models;
+using NuraDesktop.Models;
 
-namespace NuraPopupWpf.ViewModels;
+namespace NuraDesktop.ViewModels;
 
 public sealed partial class MainViewModel {
     private int? _pendingImmersionIndex;

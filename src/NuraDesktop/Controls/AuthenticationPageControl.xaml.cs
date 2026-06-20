@@ -6,9 +6,9 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 public partial class AuthenticationPageControl : UserControl {
     private MainViewModel? _viewModel;

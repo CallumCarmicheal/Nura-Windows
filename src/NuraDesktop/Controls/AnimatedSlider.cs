@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 public class AnimatedSlider : Slider {
     public static readonly DependencyProperty AnimatedValueProperty =

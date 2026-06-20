@@ -1,4 +1,4 @@
-namespace NuraPopupWpf.Models;
+namespace NuraDesktop.Models;
 
 public sealed class RememberExpandTypeOption {
     public RememberExpandTypeOption(RememberExpandType expandType, string label, string subtitle) {

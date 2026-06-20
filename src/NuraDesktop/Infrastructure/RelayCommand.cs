@@ -1,6 +1,6 @@
 using System.Windows.Input;
 
-namespace NuraPopupWpf.Infrastructure;
+namespace NuraDesktop.Infrastructure;
 
 public sealed class RelayCommand : ICommand {
     private readonly Action<object?> _execute;

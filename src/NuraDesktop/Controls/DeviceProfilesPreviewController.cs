@@ -6,9 +6,9 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 
-using NuraPopupWpf.Models;
+using NuraDesktop.Models;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 internal sealed class DeviceProfilesPreviewController : IDisposable {
     private const double PopupMinWidth = 180.0;

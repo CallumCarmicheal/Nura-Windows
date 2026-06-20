@@ -9,11 +9,11 @@ using NuraLib.Devices;
 using NuraLib.Monitoring;
 using NuraLib.Rendering;
 
-using NuraPopupWpf.Bootstrap;
-using NuraPopupWpf.Infrastructure;
-using NuraPopupWpf.Models;
+using NuraDesktop.Bootstrap;
+using NuraDesktop.Infrastructure;
+using NuraDesktop.Models;
 
-namespace NuraPopupWpf.ViewModels;
+namespace NuraDesktop.ViewModels;
 
 public sealed partial class MainViewModel {
     private readonly ObservableCollection<ButtonFunctionOption> _singleTapButtonOptions = [];

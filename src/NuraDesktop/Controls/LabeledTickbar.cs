@@ -8,7 +8,7 @@ using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 public class LabeledTickBar : TickBar {
     public static readonly DependencyProperty LabelsProperty =

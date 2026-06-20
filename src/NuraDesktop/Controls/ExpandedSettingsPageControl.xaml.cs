@@ -3,9 +3,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 public partial class ExpandedSettingsPageControl : UserControl {
     private DeviceProfilesPreviewController? _devicePreviewController;

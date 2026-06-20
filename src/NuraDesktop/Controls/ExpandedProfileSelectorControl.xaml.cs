@@ -11,10 +11,10 @@ using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 
-using NuraPopupWpf.Models;
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.Models;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 public partial class ExpandedProfileSelectorControl : UserControl {
     private const double SlashCut = 14.0;

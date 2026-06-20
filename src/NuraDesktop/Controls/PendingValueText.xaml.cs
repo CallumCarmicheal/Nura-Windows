@@ -3,7 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 /// <summary>
 /// Shows a confirmed value normally and a subtle shimmer while its device change is pending.

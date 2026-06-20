@@ -2,10 +2,10 @@ using NuraLib;
 using NuraLib.Devices;
 using NuraLib.Rendering;
 
-using NuraPopupWpf.Bootstrap;
-using NuraPopupWpf.Infrastructure;
-using NuraPopupWpf.Models;
-using NuraPopupWpf.Services;
+using NuraDesktop.Bootstrap;
+using NuraDesktop.Infrastructure;
+using NuraDesktop.Models;
+using NuraDesktop.Services;
 
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -17,7 +17,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace NuraPopupWpf.ViewModels;
+namespace NuraDesktop.ViewModels;
 
 public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     private const int MinExportRenderSize = 4;

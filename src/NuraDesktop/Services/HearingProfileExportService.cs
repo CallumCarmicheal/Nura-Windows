@@ -5,10 +5,10 @@ using System.Windows.Media.Imaging;
 
 using NuraLib.Rendering;
 
-using NuraPopupWpf.Controls;
-using NuraPopupWpf.Models;
+using NuraDesktop.Controls;
+using NuraDesktop.Models;
 
-namespace NuraPopupWpf.Services;
+namespace NuraDesktop.Services;
 
 public sealed class HearingProfileExportService {
     private const int MinRenderSize = 4;

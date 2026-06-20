@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Windows.Data;
 
-namespace NuraPopupWpf.Infrastructure;
+namespace NuraDesktop.Infrastructure;
 
 public sealed class SliderValueToFillWidthConverter : IMultiValueConverter {
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture) {

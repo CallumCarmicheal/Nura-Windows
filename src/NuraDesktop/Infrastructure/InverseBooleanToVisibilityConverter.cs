@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 
-namespace NuraPopupWpf.Infrastructure;
+namespace NuraDesktop.Infrastructure;
 
 public sealed class InverseBooleanToVisibilityConverter : IValueConverter {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) {

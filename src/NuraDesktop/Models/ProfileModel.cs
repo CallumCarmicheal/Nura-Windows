@@ -5,7 +5,7 @@ using System.Windows.Media;
 
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
-namespace NuraPopupWpf.Models;
+namespace NuraDesktop.Models;
 
 public sealed class ProfileModel {
     public string Name { get; init; }

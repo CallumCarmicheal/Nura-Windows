@@ -4,9 +4,9 @@ using System.Windows.Media.Imaging;
 
 using NuraLib.Rendering;
 
-using NuraPopupWpf.Models;
+using NuraDesktop.Models;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 /// <summary>
 /// Renders a hearing profile with either the native-reference bitmap path or retained WPF contours.

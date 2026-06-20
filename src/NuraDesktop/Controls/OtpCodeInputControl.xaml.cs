@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 public partial class OtpCodeInputControl : UserControl {
     public static readonly DependencyProperty CodeProperty =

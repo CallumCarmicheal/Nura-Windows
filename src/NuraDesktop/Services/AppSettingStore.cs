@@ -1,9 +1,9 @@
 using System.IO;
 using System.Text.Json;
 
-using NuraPopupWpf.Models;
+using NuraDesktop.Models;
 
-namespace NuraPopupWpf.Services;
+namespace NuraDesktop.Services;
 
 public sealed class AppSettingStore {
     private static readonly JsonSerializerOptions SerializerOptions = new() {

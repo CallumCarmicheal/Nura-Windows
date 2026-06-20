@@ -1,4 +1,4 @@
-namespace NuraPopupWpf.Models;
+namespace NuraDesktop.Models;
 
 public sealed class WindowAnchorOption {
     public WindowAnchorOption(WindowAnchorMode mode, string label, string subtitle) {

@@ -1,7 +1,7 @@
 using NuraLib;
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf.Bootstrap;
+namespace NuraDesktop.Bootstrap;
 
 public sealed class PopupAppContext : IAsyncDisposable {
     private readonly Func<ValueTask>? _disposeAsync;

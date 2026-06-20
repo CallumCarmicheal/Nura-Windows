@@ -4,8 +4,8 @@ using System.Windows.Media.Imaging;
 
 using NuraLib.Devices;
 
-using NuraPopupWpf.Controls;
-using NuraPopupWpf.Models;
+using NuraDesktop.Controls;
+using NuraDesktop.Models;
 
 internal sealed class ProfileVisualControlTests {
     public void RunAll() {

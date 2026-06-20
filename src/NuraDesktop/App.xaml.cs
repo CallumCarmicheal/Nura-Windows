@@ -1,10 +1,10 @@
-using NuraPopupWpf.Bootstrap;
-using NuraPopupWpf.Services;
+using NuraDesktop.Bootstrap;
+using NuraDesktop.Services;
 
 using System.Windows;
 using System.Windows.Threading;
 
-namespace NuraPopupWpf;
+namespace NuraDesktop;
 
 public partial class App : Application {
     private PopupAppContext? _context;

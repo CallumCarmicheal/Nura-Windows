@@ -1,8 +1,8 @@
 using System.Windows.Controls;
 
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 public partial class CompactDevicePageControl : UserControl
 {

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace NuraPopupWpf {
+namespace NuraDesktop {
     internal class Startup {
     }
 }

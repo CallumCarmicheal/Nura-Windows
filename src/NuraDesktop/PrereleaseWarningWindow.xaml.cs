@@ -1,7 +1,7 @@
 ﻿using System.Windows;
 using System.Windows.Input;
 
-namespace NuraPopupWpf;
+namespace NuraDesktop;
 
 public partial class PrereleaseWarningWindow : Window {
     public PrereleaseWarningWindow() {

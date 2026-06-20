@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace NuraPopupWpf.Infrastructure;
+namespace NuraDesktop.Infrastructure;
 
 public abstract class ObservableObject : INotifyPropertyChanged {
     public event PropertyChangedEventHandler? PropertyChanged;

@@ -1,4 +1,4 @@
-namespace NuraPopupWpf.Models;
+namespace NuraDesktop.Models;
 
 public enum StatusTone {
     Neutral,

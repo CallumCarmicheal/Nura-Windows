@@ -4,9 +4,9 @@ using System.IO;
 using NuraLib;
 using NuraLib.Configuration;
 using NuraLib.Logging;
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf.Bootstrap;
+namespace NuraDesktop.Bootstrap;
 
 public sealed class LiveSdkBootstrapper : IPopupAppBootstrapper {
     public async Task<PopupAppContext> BootstrapAsync(string[] args, CancellationToken cancellationToken = default) {

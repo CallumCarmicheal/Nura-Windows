@@ -1,4 +1,4 @@
-namespace NuraPopupWpf.Models;
+namespace NuraDesktop.Models;
 
 public sealed class WindowAnchorEdgeOption {
     public WindowAnchorEdgeOption(WindowAnchorEdge edge, string label, int row, int column) {

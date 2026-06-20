@@ -1,4 +1,4 @@
-namespace NuraPopupWpf.Models;
+namespace NuraDesktop.Models;
 
 public sealed class AppSettings {
     public bool AutoSetupDevices { get; set; } = true;

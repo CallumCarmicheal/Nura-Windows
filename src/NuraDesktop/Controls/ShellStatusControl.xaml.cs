@@ -1,6 +1,6 @@
 using System.Windows.Controls;
 
-namespace NuraPopupWpf.Controls;
+namespace NuraDesktop.Controls;
 
 public partial class ShellStatusControl : UserControl {
     public ShellStatusControl() {

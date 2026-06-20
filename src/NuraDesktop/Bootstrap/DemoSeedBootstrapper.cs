@@ -1,6 +1,6 @@
-using NuraPopupWpf.ViewModels;
+using NuraDesktop.ViewModels;
 
-namespace NuraPopupWpf.Bootstrap;
+namespace NuraDesktop.Bootstrap;
 
 public sealed class DemoSeedBootstrapper : IPopupAppBootstrapper {
     public Task<PopupAppContext> BootstrapAsync(string[] args, CancellationToken cancellationToken = default) {

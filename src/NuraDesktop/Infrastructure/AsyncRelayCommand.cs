@@ -1,6 +1,6 @@
 using System.Windows.Input;
 
-namespace NuraPopupWpf.Infrastructure;
+namespace NuraDesktop.Infrastructure;
 
 public sealed class AsyncRelayCommand : ICommand {
     private readonly Func<object?, CancellationToken, Task> _execute;
