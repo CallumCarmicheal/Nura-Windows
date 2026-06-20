@@ -1,56 +1,41 @@
-﻿using NuraLib.Devices;
-
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
-using System.Text;
+using NuraLib.Devices;
 
 namespace NuraLib.Rendering;
 
-public sealed record class NuraProfileBitmap {
-    public NuraProfileBitmap(
-        int width,
-        int height,
-        byte[] pixels
-    ) {
-        Width = width;
-        Height = height;
-        Pixels = pixels;
-    }
-
-    public int Width { get; }
-
-    public int Height { get; }
-
+public sealed record class NuraProfileBitmap(int Width, int Height, byte[] Pixels) {
     public int Stride => Width * 4;
-
-    /// <summary>
-    /// Gets BGRA32 pixel data.
-    /// </summary>
-    public byte[] Pixels { get; }
 }
 
+/// <summary>
+/// CPU implementation of the Android static profile visualisation renderer.
+/// </summary>
 public class NuraProfileBitmapRenderer {
-    private const double HalfPi = Math.PI / 2.0;
+    private const double TwoPi = Math.PI * 2.0;
+    private const double BaseRadius = 1.15;
+    private const double EdgeSoftness = 0.005;
+    private const double ContourStep = 1.0 / 6.0;
+    private const double HueSlideAmount = 0.07;
+    private const double BaseAlpha = 0.4;
+    private const double AlphaSink = 0.15;
+    private const double HueOffset = 0.35;
+    private const double GradientShift = 0.65;
 
-    private static readonly GradientStopModel[] GradientStops = {
+    private static readonly GradientStop[] GradientStops = [
         new(0.00, 240, 127, 87),
         new(0.12, 236, 28, 36),
         new(0.28, 238, 88, 149),
         new(0.41, 160, 76, 156),
         new(0.60, 61, 83, 163),
         new(0.80, 8, 152, 205),
-        new(1.00, 141, 209, 199),
-    };
+        new(1.00, 141, 209, 199)
+    ];
 
     public NuraProfileBitmap Render(
         NuraProfileVisualisationData profile,
         double personalisationProgress,
         int size,
         double immersionValue
-    ) => Render(profile, profile, 1, personalisationProgress, size, immersionValue);
+    ) => Render(profile, profile, 1.0, personalisationProgress, size, immersionValue);
 
     public NuraProfileBitmap Render(
         NuraProfileVisualisationData targetProfile,
@@ -60,275 +45,191 @@ public class NuraProfileBitmapRenderer {
         int size,
         double immersionValue
     ) {
-        int width = size;
-        int height = size;
-        int stride = width * 4;
+        ArgumentNullException.ThrowIfNull(targetProfile);
+        ArgumentNullException.ThrowIfNull(fromProfile);
 
-        byte[] pixels = new byte[stride * height];
+        if (size <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(size), "Render size must be greater than zero.");
+        }
 
-        RenderVisualisation(
-            targetProfile,
-            fromProfile,
-            profileBlendProgress,
-            personalisationProgress,
-            size,
-            immersionValue,
-            pixels
-        );
+        // The official static Android renderer has no immersion input. Keep this parameter
+        // for source compatibility with existing callers but intentionally do not use it.
+        _ = immersionValue;
+
+        var blend = Math.Clamp(profileBlendProgress, 0.0, 1.0);
+        var personalisation = Math.Clamp(personalisationProgress, 0.0, 1.0);
+        var sourceValues = NuraProfileReferenceCurve.CreateCombinedValues(fromProfile);
+        var targetValues = NuraProfileReferenceCurve.CreateCombinedValues(targetProfile);
+        var values = BlendValues(sourceValues, targetValues, blend);
+        var textureSamples = NuraProfileReferenceCurve.CreateTextureSamples(values);
+        var signatureOffset = NuraProfileReferenceCurve.CalculateSignatureOffset(values);
+        var colour = Lerp(fromProfile.Colour, targetProfile.Colour, blend);
+        var colours = GetProfileColours(colour);
+        var total = values.Sum();
+        var totalCos = Math.Cos(total);
+        var totalSin = Math.Sin(total);
+        var greyProgress = (personalisation * 1.0) + ((1.0 - personalisation) * 0.03);
+        var pixels = new byte[checked(size * size * 4)];
+
+        for (var y = 0; y < size; y++) {
+            // Android flips glReadPixels before constructing the returned Bitmap.
+            var py = 1.0 - (((y + 0.5) / size) * 2.0);
+
+            for (var x = 0; x < size; x++) {
+                var px = (((x + 0.5) / size) * 2.0) - 1.0;
+                var radius = Math.Sqrt((px * px) + (py * py)) * 2.0;
+                var rawAngle = Math.Atan2(px, py) / TwoPi;
+                var angle = Fract(rawAngle);
+                var sample = NuraProfileReferenceCurve.SampleTexture(textureSamples, angle);
+                var signature = ((sample * 2.0) - 1.0) + signatureOffset;
+
+                var rotatedX = (totalCos * px) - (totalSin * py);
+                var rotatedY = (totalSin * px) + (totalCos * py);
+                var colourSlide = (rotatedX + rotatedY + (radius * 0.2)) * HueSlideAmount;
+                var colourValue = new Rgb(1.0, 1.0, 1.0);
+                var blendMix = 1.0 - (py + 0.7);
+
+                for (var contour = 0; contour < 6; contour++) {
+                    var contourValue = contour * ContourStep;
+                    var value = signature * contourValue;
+                    var edge = BaseRadius + ((value * 2.0) * personalisation);
+                    var solid = SmoothStep(EdgeSoftness, 0.0, radius - edge);
+                    var alpha = (BaseAlpha - (AlphaSink * contourValue)) * greyProgress;
+                    var layerColour = contour == 0
+                        ? colours.First * personalisation
+                        : Lerp(colours.First, colours.Second, contourValue * 1.3) * personalisation;
+
+                    var alphaColour = Lerp(colourValue, layerColour, alpha * solid);
+                    var multipliedColour = Lerp(colourValue, colourValue * layerColour, alpha * solid);
+                    colourValue = Lerp(alphaColour, multipliedColour, blendMix);
+                }
+
+                colourValue = HueRotate(colourValue, -colourSlide);
+                var pixelIndex = ((y * size) + x) * 4;
+                pixels[pixelIndex] = ToByte(colourValue.B);
+                pixels[pixelIndex + 1] = ToByte(colourValue.G);
+                pixels[pixelIndex + 2] = ToByte(colourValue.R);
+                pixels[pixelIndex + 3] = byte.MaxValue;
+            }
+        }
 
         return new NuraProfileBitmap(size, size, pixels);
     }
 
     /// <summary>
-    /// Render the nura profile into a bitmap object, use the extensions under NuraLib.Rendering.Drawing for common conversions
+    /// Renders the static profile image used for profile previews and exports.
     /// </summary>
-    /// <param name="profile"></param>
-    /// <param name="size"></param>
-    /// <returns></returns>
-    public NuraProfileBitmap RenderThumbnail(NuraProfileVisualisationData profile, int size) {
-        return Render(
-            profile,
-            profile,
-            profileBlendProgress: 1.0,
-            personalisationProgress: 1.0,
-            size,
-            immersionValue: 1.0
-        );
+    public NuraProfileBitmap RenderThumbnail(NuraProfileVisualisationData profile, int size) =>
+        Render(profile, profile, 1.0, 1.0, size, immersionValue: 0.0);
+
+    private static double[] BlendValues(IReadOnlyList<double> source, IReadOnlyList<double> target, double blend) {
+        var count = Math.Min(source.Count, target.Count);
+        var values = new double[count];
+
+        for (var index = 0; index < count; index++) {
+            values[index] = Lerp(source[index], target[index], blend);
+        }
+
+        return values;
     }
 
-    private void RenderVisualisation(
-        NuraProfileVisualisationData targetProfile,
-        NuraProfileVisualisationData fromProfile,
-        double profileBlendProgress,
-        double personalisationProgress,
-        int size,
-        double immersionValue,
-        byte[] pixels
-    ) {
-        int width = size;
-        int height = size;
-        int stride = width * 4;
+    private static (Rgb First, Rgb Second) GetProfileColours(double colour) {
+        var hue = Fract(HueOffset + Math.Clamp(colour, 0.0, 1.0));
+        var first = SampleGradient(Math.Abs(1.0 - (hue * 2.0)));
+        var secondHue = Fract(hue + GradientShift);
+        var second = SampleGradient(Math.Abs(1.0 - (secondHue * 2.0))) * 1.3;
+        return (first, second);
+    }
 
-        if (pixels.Length < stride * height) {
-            throw new ArgumentException(
-                "Pixel buffer is smaller than the requested render size.",
-                nameof(pixels)
-            );
-        }
+    private static Rgb SampleGradient(double position) {
+        var clamped = Math.Clamp(position, 0.0, 1.0);
 
-        Array.Clear(pixels, 0, stride * height);
-
-        double[] targetCurve = BuildProfileCurve(targetProfile.LeftData, targetProfile.RightData);
-        double[] sourceCurve = BuildProfileCurve(fromProfile.LeftData, fromProfile.RightData);
-        double[] blendedCurve = new double[targetCurve.Length];
-
-        for (int i = 0; i < targetCurve.Length; i++) {
-            blendedCurve[i] = Lerp(sourceCurve[i], targetCurve[i], profileBlendProgress) * personalisationProgress;
-        }
-
-        double fromColour = Lerp(0.7, fromProfile.Colour, personalisationProgress);
-        double toColour = Lerp(0.7, targetProfile.Colour, personalisationProgress);
-        double transitionColour = Lerp(fromColour, toColour, profileBlendProgress);
-
-        var colours = GetProfileColours(transitionColour);
-
-        double baseRadius = 1.15;
-        double profileScale = Lerp(
-            0.0,
-            Lerp(0.32, 0.58, (immersionValue + 2.0) / 6.0),
-            personalisationProgress
-        );
-
-        double edgeSoftness = 0.028;
-        int bandCount = 6;
-        double baseAlpha = Lerp(0.34, 0.48, personalisationProgress);
-        double alphaSink = 0.13;
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                double uvX = (x + 0.5) / width;
-                double uvY = (y + 0.5) / height;
-
-                double px = (uvX - 0.5) * 2.0;
-                double py = (uvY - 0.5) * 2.0;
-
-                double radius = Math.Sqrt((px * px) + (py * py)) * 2.0;
-                double angle = Fract(Math.Atan2(px, py) / (Math.PI * 2.0));
-                double profileValue = SampleWrappedCubic(blendedCurve, angle);
-
-                var color = new Rgb(0, 0, 0);
-
-                for (int band = 0; band < bandCount; band++) {
-                    double fi = band / (double)bandCount;
-                    double bandOffset = profileValue * fi * profileScale;
-                    double edge = baseRadius + bandOffset;
-                    double mask = SmoothStep(edge + edgeSoftness, edge - edgeSoftness, radius);
-                    double alpha = Math.Max(0.0, baseAlpha - (alphaSink * fi)) * mask;
-
-                    Rgb bandColor = MixRgb(colours.Col1, colours.Col2, fi);
-                    color = AlphaComposite(color, bandColor, alpha);
-                }
-
-                double glow = Clamp(1.0 - (Math.Abs(radius - baseRadius) / 0.23), 0.0, 1.0) * 0.06;
-                color = AlphaComposite(color, MixRgb(colours.Col1, colours.Col2, 0.5), glow);
-
-                double intensity = Math.Max(color.R, Math.Max(color.G, color.B)) / 255.0;
-                double softField = Clamp(1.0 - (Math.Abs(radius - baseRadius) / 0.42), 0.0, 1.0) * 0.18;
-                double alphaChannel = Clamp((intensity * 1.2) + softField, 0.0, 1.0);
-
-                int index = (y * stride) + (x * 4);
-
-                // System.Drawing 32bppArgb memory layout is BGRA.
-                pixels[index + 0] = (byte)Math.Round(color.B);
-                pixels[index + 1] = (byte)Math.Round(color.G);
-                pixels[index + 2] = (byte)Math.Round(color.R);
-                pixels[index + 3] = (byte)Math.Round(alphaChannel * 255.0);
+        for (var index = 0; index < GradientStops.Length - 1; index++) {
+            var start = GradientStops[index];
+            var end = GradientStops[index + 1];
+            if (clamped < start.Position || clamped > end.Position) {
+                continue;
             }
-        }
-    }
 
-    private static double[] BuildProfileCurve(IReadOnlyList<double> leftData, IReadOnlyList<double> rightData) {
-        double[] left = MakeValues(leftData);
-        double[] right = MakeValues(rightData);
-
-        int count = Math.Min(left.Length, right.Length);
-        double[] values = new double[count];
-
-        for (int i = 0; i < count; i++) {
-            values[i] = (left[i] + right[i]) * 0.5;
+            var amount = (clamped - start.Position) / (end.Position - start.Position);
+            return Lerp(start.Colour, end.Colour, amount);
         }
 
-        return NormalizeCurve(values);
+        return GradientStops[^1].Colour;
     }
 
-    private static double[] MakeValues(IReadOnlyList<double> raw) {
-        if (raw.Count < 4) {
-            throw new InvalidOperationException("Profile data must contain at least 4 values.");
+    private static Rgb HueRotate(Rgb colour, double amount) {
+        var hsv = RgbToHsv(colour);
+        return HsvToRgb(new Rgb(Fract(hsv.R + amount), hsv.G, hsv.B));
+    }
+
+    private static Rgb RgbToHsv(Rgb colour) {
+        var maximum = Math.Max(colour.R, Math.Max(colour.G, colour.B));
+        var minimum = Math.Min(colour.R, Math.Min(colour.G, colour.B));
+        var delta = maximum - minimum;
+
+        double hue;
+        if (delta < 0.0000000001) {
+            hue = 0.0;
+        } else if (maximum == colour.R) {
+            hue = Fract(((colour.G - colour.B) / delta) / 6.0);
+        } else if (maximum == colour.G) {
+            hue = (((colour.B - colour.R) / delta) + 2.0) / 6.0;
+        } else {
+            hue = (((colour.R - colour.G) / delta) + 4.0) / 6.0;
         }
 
-        var values = new List<double>();
-
-        double first = (raw[0] + raw[1] + raw[2]) / 3.0;
-        values.Add(ShapeEdgeValue(first));
-
-        for (int i = 3; i <= raw.Count - 2; i++) {
-            values.Add(ShapeValue(raw[i]));
-        }
-
-        values.Add(ShapeEdgeValue(raw[^1]));
-
-        return values.ToArray();
+        return new Rgb(hue, maximum <= 0.0000000001 ? 0.0 : delta / maximum, maximum);
     }
 
-    private static double[] NormalizeCurve(IReadOnlyList<double> values) {
-        double maxAbs = 0.0;
+    private static Rgb HsvToRgb(Rgb hsv) {
+        var h = Fract(hsv.R) * 6.0;
+        var c = hsv.B * hsv.G;
+        var x = c * (1.0 - Math.Abs((h % 2.0) - 1.0));
+        var m = hsv.B - c;
+        var sector = (int)Math.Floor(h);
 
-        foreach (double value in values) {
-            maxAbs = Math.Max(maxAbs, Math.Abs(value));
-        }
+        var rgb = sector switch {
+            0 => new Rgb(c, x, 0.0),
+            1 => new Rgb(x, c, 0.0),
+            2 => new Rgb(0.0, c, x),
+            3 => new Rgb(0.0, x, c),
+            4 => new Rgb(x, 0.0, c),
+            _ => new Rgb(c, 0.0, x)
+        };
 
-        if (maxAbs < 0.00001) {
-            maxAbs = 1.0;
-        }
-
-        return values.Select(value => value / maxAbs).ToArray();
+        return new Rgb(rgb.R + m, rgb.G + m, rgb.B + m);
     }
 
-    private static double ShapeValue(double x) => (Math.Atan(x * 0.3) * 0.4) / HalfPi;
-
-    private static double ShapeEdgeValue(double x) => (Math.Atan(x * 0.15) * 0.4) / HalfPi;
-
-    private static double SampleWrappedCubic(IReadOnlyList<double> values, double t) {
-        int count = values.Count;
-
-        double x = Fract(t) * count;
-        int i = (int)Math.Floor(x);
-        double f = x - i;
-
-        double p0 = values[Mod(i - 1, count)];
-        double p1 = values[Mod(i, count)];
-        double p2 = values[Mod(i + 1, count)];
-        double p3 = values[Mod(i + 2, count)];
-
-        double f2 = f * f;
-        double f3 = f2 * f;
-
-        double value =
-            p1
-            + (0.5 * f * (p2 - p0))
-            + (0.5 * f2 * ((2.0 * p0) - (5.0 * p1) + (4.0 * p2) - p3))
-            + (0.5 * f3 * (-p0 + (3.0 * p1) - (3.0 * p2) + p3));
-
-        return Clamp(value, -1.0, 1.0);
+    private static double SmoothStep(double edge0, double edge1, double value) {
+        var amount = Math.Clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
+        return amount * amount * (3.0 - (2.0 * amount));
     }
 
-    private static (Rgb Col1, Rgb Col2) GetProfileColours(double colour) {
-        double baseHue = 0.35;
-        double gradientShift = 0.65;
-        double c = Clamp(colour, 0.0, 1.0);
-
-        double hue1 = Fract(baseHue + c);
-        double hue2 = Fract(hue1 + gradientShift);
-
-        double t1 = Math.Abs(1.0 - (hue1 * 2.0));
-        double t2 = Math.Abs(1.0 - (hue2 * 2.0));
-
-        return (SampleGradient(t1), SampleGradient(t2));
-    }
-
-    private static Rgb SampleGradient(double t) {
-        double x = Clamp(t, 0.0, 1.0);
-
-        for (int i = 0; i < GradientStops.Length - 1; i++) {
-            GradientStopModel a = GradientStops[i];
-            GradientStopModel b = GradientStops[i + 1];
-
-            if (x >= a.T && x <= b.T) {
-                double localT = (x - a.T) / (b.T - a.T);
-
-                return LerpRgb(
-                    new Rgb(a.R, a.G, a.B),
-                    new Rgb(b.R, b.G, b.B),
-                    localT
-                );
-            }
-        }
-
-        GradientStopModel last = GradientStops[^1];
-
-        return new Rgb(last.R, last.G, last.B);
-    }
-
-    private static Rgb LerpRgb(Rgb a, Rgb b, double t) {
-        return new Rgb(
-            Lerp(a.R, b.R, t),
-            Lerp(a.G, b.G, t),
-            Lerp(a.B, b.B, t)
-        );
-    }
-
-    private static Rgb MixRgb(Rgb a, Rgb b, double t) => LerpRgb(a, b, t);
-
-    private static Rgb AlphaComposite(Rgb dst, Rgb src, double alpha)
-        => new Rgb(Lerp(dst.R, src.R, alpha), Lerp(dst.G, src.G, alpha), Lerp(dst.B, src.B, alpha));
-
-    private static double SmoothStep(double edge0, double edge1, double x) {
-        double t = Clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-
-        return t * t * (3.0 - (2.0 * t));
-    }
-
-    private static double Clamp(double value, double min, double max) {
-        return Math.Max(min, Math.Min(max, value));
-    }
+    private static byte ToByte(double value) => (byte)Math.Round(Math.Clamp(value, 0.0, 1.0) * byte.MaxValue);
 
     private static double Fract(double value) => value - Math.Floor(value);
 
-    private static int Mod(int value, int size) => ((value % size) + size) % size;
+    private static double Lerp(double from, double to, double amount) => from + ((to - from) * amount);
 
-    private static double Lerp(double a, double b, double t) => a + ((b - a) * t);
+    private static Rgb Lerp(Rgb from, Rgb to, double amount) => new(
+        Lerp(from.R, to.R, amount),
+        Lerp(from.G, to.G, amount),
+        Lerp(from.B, to.B, amount));
 
-    private readonly record struct GradientStopModel(double T, double R, double G, double B);
+    private readonly record struct GradientStop(double Position, double Red, double Green, double Blue) {
+        public Rgb Colour => new(Red / byte.MaxValue, Green / byte.MaxValue, Blue / byte.MaxValue);
+    }
 
-    private readonly record struct Rgb(double R, double G, double B);
+    private readonly record struct Rgb(double R, double G, double B) {
+        public static Rgb operator *(Rgb colour, double multiplier) => new(
+            colour.R * multiplier,
+            colour.G * multiplier,
+            colour.B * multiplier);
+
+        public static Rgb operator *(Rgb left, Rgb right) => new(
+            left.R * right.R,
+            left.G * right.G,
+            left.B * right.B);
+    }
 }

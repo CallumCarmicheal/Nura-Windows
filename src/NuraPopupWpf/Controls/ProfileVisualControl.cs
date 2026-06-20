@@ -94,7 +94,6 @@ public sealed class ProfileVisualControl : FrameworkElement {
         ProfileModel? ToProfile,
         double BlendProgress,
         double ModeProgress,
-        double ImmersionValue,
         bool UseBitmapRenderer);
 
     private static readonly ConditionalWeakTable<ProfileModel, double[]> ProfileCurveCache = new();
@@ -477,7 +476,6 @@ public sealed class ProfileVisualControl : FrameworkElement {
         var renderSize = Math.Max(1, (int)Math.Round(size));
         var blend = Clamp(ProfileBlendProgress, 0.0, 1.0);
         var mode = Clamp(ModeProgress, 0.0, 1.0);
-        var immersion = ImmersionValue;
 
         // Check if we have already cached the bitmap
         if (bitmapState is not null 
@@ -487,7 +485,6 @@ public sealed class ProfileVisualControl : FrameworkElement {
                 && ReferenceEquals(bitmapState.ToProfile, toProfile)
                 && NearlyEqual(bitmapState.BlendProgress, blend)
                 && NearlyEqual(bitmapState.ModeProgress, mode)
-                && NearlyEqual(bitmapState.ImmersionValue, immersion)
                 && bitmapState.UseBitmapRenderer == UseBitmapRenderer) {
             return bitmapState.Bitmap;
         }
@@ -499,7 +496,7 @@ public sealed class ProfileVisualControl : FrameworkElement {
                 profileBlendProgress: blend,
                 personalisationProgress: mode,
                 size: renderSize,
-                immersionValue: immersion);
+                immersionValue: 0.0);
 
         var bitmap = rawBitmap.ToBitmapSource();
 
@@ -508,7 +505,6 @@ public sealed class ProfileVisualControl : FrameworkElement {
             Bitmap: bitmap, BitmapSize: renderSize,
             FromProfile: fromProfile, ToProfile: toProfile,
             BlendProgress: blend, ModeProgress: mode,
-            ImmersionValue: immersion,
             UseBitmapRenderer: UseBitmapRenderer
         );
         
@@ -516,7 +512,7 @@ public sealed class ProfileVisualControl : FrameworkElement {
     }
 
     private void InvalidateBitmapCache() {
-        bitmapState = new(null, 0, null, null, double.NaN, double.NaN, double.NaN, UseBitmapRenderer);
+        bitmapState = new(null, 0, null, null, double.NaN, double.NaN, UseBitmapRenderer);
     }
 
     private void InvalidateRenderCaches() {
@@ -530,7 +526,12 @@ public sealed class ProfileVisualControl : FrameworkElement {
             return;
         }
 
-        control.InvalidateRenderCaches();
+        // The native bitmap profile has no immersion input. Keep the existing shape path
+        // responsive to immersion while avoiding needless bitmap regeneration.
+        if (e.Property != ImmersionValueProperty || !control.UseBitmapRenderer) {
+            control.InvalidateRenderCaches();
+        }
+
         control.shapeState = null;
         control.InvalidateVisual();
     }

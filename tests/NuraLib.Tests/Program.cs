@@ -15,6 +15,8 @@ var deviceManagerTests = new DeviceManagerStabilityTests();
 deviceManagerTests.RunAll();
 var transportDispatcherTests = new TransportDispatcherTests();
 await transportDispatcherTests.RunAllAsync();
+var profileVisualisationTests = new ProfileVisualisationTests();
+profileVisualisationTests.RunAll();
 Console.WriteLine("All NuraLib packet round-trip tests passed.");
 
 internal sealed class CommandRoundTripTests {

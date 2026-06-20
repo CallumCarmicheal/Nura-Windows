@@ -16,7 +16,7 @@ public sealed class LiveSdkBootstrapper : IPopupAppBootstrapper {
         var configPath = ResolveNuraConfigPath(storagePaths);
         var config = NuraConfigStore.LoadOrCreate(configPath);
         var client = new NuraClient(new NuraConfigState(config));
-        client.MinimumLogLevel = NuraLogLevel.Information;
+        client.MinimumLogLevel = NuraLogLevel.Trace;
         client.RequestStateSave += (_, _) => NuraConfigStore.Save(configPath, client.State.Configuration);
         client.OnLog += (_, e) => Debug.WriteLine($"[{e.Level}] {e.Source}: {e.Message}");
 
