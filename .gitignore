@@ -4,6 +4,7 @@
 .dotnet/
 global.json
 app-settings.json
+artifacts
 
 # Ignore binaries.
 bin/
