@@ -19,8 +19,8 @@ https://github.com/user-attachments/assets/b3b590cd-3b8b-4d8f-bac5-d6c3a74d1779
 All of the git commit messages should use sematic git commit messages, some have the project destination in them like:
 
 The project names have been renamed so in older commits they map out as this:
-`feat(app)` -> `feat(term)` : app was renamed to tui to better fit the folder name of `NuraTerm`
-`chore(ui)` -> `chore(app)` : ui was renamed to app to better fit the desktop app is being the primary focus.
+`feat(app)` -> `feat(term)`: the former console app is now `NuraTerm`.
+`chore(ui)` -> `feat(desktop)`: the former popup UI is now `NuraDesktop`.
 
 # Summary
 
@@ -72,7 +72,7 @@ Current limitations:
 
 It demonstrates:
 
-- loading/saving `nura-config.json`
+- loading/saving `settings.nura.json`
 - auth resume and email-code login fallback
 - connection monitoring
 - provisioning devices when required
@@ -116,7 +116,7 @@ Confirmed important result:
 
 ### NuraDesktop
 
-`NuraDesktop` is the experimental GUI client. 
+`NuraDesktop` is the WPF GUI client. It supports demo and live startup modes, capability-aware controls, automatic setup for connected devices, battery display, hearing-profile rendering, and queued/applying feedback while device commands are in flight.
 
 For SDK usage details, read `docs/SDK-Guide.md`.
 
@@ -164,6 +164,16 @@ Build the library:
 dotnet build .\src\NuraLib\NuraLib.csproj -v minimal
 ```
 
+## Release Build
+
+The repository release script publishes `NuraTerm` and `NuraDesktop`, then produces both self-contained and framework-dependent Windows archives:
+
+```powershell
+dotnet run --file build.cs -- release --version 1.2.0
+```
+
+Use `--skip-tests` only when tests have already been run separately. Release archives are written to `artifacts/release`.
+
 Run the library tests:
 
 ```powershell
@@ -182,13 +192,13 @@ $env:APPDATA="$PWD\.appdata"
 
 ## Configuration
 
-*** [WARNING], these are out of date and due to the constant evolution of this library this format will change. ***
+The shipped applications keep NuraLib state and application presentation state in separate files.
 
-### `nura-config.json`
+### `settings.nura.json`
 
 This stores durable local device information.
 
-`NuraLib` and `NuraApp` use this as the durable host-owned config file.
+`NuraTerm` and `NuraDesktop` use this as the durable host-owned NuraLib config file.
 
 It stores:
 
@@ -250,7 +260,15 @@ It can contain things like:
 
 For `NuraLib`, this file is not the intended final public config model. It is primarily part of the current test harness workflow.
 
-## NuraApp Sample
+### `settings.tui.json`
+
+`NuraTerm` stores its presentation preferences separately from NuraLib state. It currently contains the trace/debug-message preference.
+
+### `settings.gui.json`
+
+`NuraDesktop` stores GUI-only preferences separately from NuraLib state. The portable release writes this beside the application; demo mode uses a `demo` subdirectory.
+
+## NuraTerm Sample
 
 Run the sample with:
 
@@ -260,7 +278,7 @@ dotnet run --project .\src\NuraTerm\NuraTerm.csproj
 
 Expected flow:
 
-1. loads or creates `nura-config.json`
+1. loads or creates `settings.nura.json`
 2. resumes stored auth if available
 3. prompts for email-code login if needed
 4. starts connection monitoring
@@ -327,7 +345,7 @@ dotnet run --project .\src\NuraUtilityConsole\NuraUtilityConsole.csproj -- heads
 
 Every `NuraUtilityConsole` run creates a timestamped log file in `logs`.
 
-`NuraApp` logs to the console.
+`NuraTerm` logs to the console.
 
 Treat all logs as sensitive. They may contain:
 
@@ -350,7 +368,7 @@ Use caution with:
 
 Current safe starting points:
 
-- `NuraApp`
+- `NuraTerm`
 - `probe devices`
 - `probe hw-info`
 - `flow init-to-start3`
@@ -366,7 +384,7 @@ Short-term:
 Long-term:
 
 - use `NuraLib` as the public Windows integration surface
-- keep `NuraApp` as the minimal SDK sample and smoke-test host
+- keep `NuraTerm` as the minimal SDK sample and smoke-test host
 - keep backend use limited to one-time bootstrap or recovery while the API still exists
 - rely on the recovered persistent device key for normal ongoing local control
 

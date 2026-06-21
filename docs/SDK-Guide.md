@@ -1016,10 +1016,10 @@ It is fine to log whether a key is present, which provisioning reason applies, a
 
 ## Console sample app
 
-`NuraApp` is a small console/TUI sample that demonstrates the live SDK integration path without WPF:
+`NuraTerm` is a small console/TUI sample that demonstrates the live SDK integration path without WPF:
 
 ```powershell
-dotnet run --project .\NuraApp\NuraApp.csproj
+dotnet run --project .\src\NuraTerm\NuraTerm.csproj
 ```
 
 The sample intentionally keeps all UI code in the app layer. It uses `NuraLib` only for auth, device discovery, provisioning, refresh, and monitoring.
@@ -1028,7 +1028,7 @@ The selected-device display is capability-aware. It shows device family, profile
 
 The important sequence is:
 
-1. load `nura-config.json` with `NuraConfigStore.LoadOrCreate`
+1. load `settings.nura.json` with `NuraConfigStore.LoadOrCreate`
 2. construct `NuraClient`
 3. persist `client.State.Configuration` whenever `RequestStateSave` fires
 4. resume stored auth if possible, otherwise prompt for email-code login
@@ -1039,7 +1039,7 @@ The important sequence is:
 9. call `StartMonitoringAsync()` to keep cached state updated from headset indications
 10. on shutdown, call `client.Monitoring.StopAsync()`, then call `StopMonitoringAsync()` for every connected device with `IsMonitoring` or `HasLocalSession`
 
-The sample uses `Environment.CurrentDirectory\nura-config.json` for convenience. Production apps should usually store config under an app-owned location such as `%LOCALAPPDATA%`, an encrypted settings store, or the host application's normal profile directory.
+`NuraTerm` uses `Environment.CurrentDirectory\settings.nura.json` for NuraLib state and `settings.tui.json` for terminal preferences. Production hosts should usually store these under an app-owned location such as `%LOCALAPPDATA%`, an encrypted settings store, or the host application's normal profile directory.
 
 The sample also shows two event patterns:
 

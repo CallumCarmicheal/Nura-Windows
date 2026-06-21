@@ -87,8 +87,8 @@ static async Task CreateZipAsync(Options options, string version, bool selfConta
     Directory.CreateDirectory(stage);
 
     var projects = new[] {
-        new PublishProject("NuraApp", "src/NuraApp/NuraApp.csproj"),
-        new PublishProject("NuraPopupWpf", "src/NuraPopupWpf/NuraPopupWpf.csproj")
+        new PublishProject("NuraTerm", "src/NuraTerm/NuraTerm.csproj"),
+        new PublishProject("NuraDesktop", "src/NuraDesktop/NuraDesktop.csproj")
     };
 
     foreach (var project in projects) {
@@ -111,7 +111,8 @@ static async Task CreateZipAsync(Options options, string version, bool selfConta
         MergeDirectory(projectOut, stage);
     }
 
-    CopyRepoFileIfExists("README.md", stage);
+    CopyRepoFileIfExists("README.md", stage, "README.repo.md");
+    CopyRepoFileIfExists("src/NuraDesktop/README.md", stage, "README.NuraDesktop.md");
     CopyRepoFileIfExists("LICENSE.md", stage);
     CopyRepoFileIfExists("NOTICE", stage);
 
@@ -167,12 +168,12 @@ static bool FilesAreIdentical(string left, string right) {
     return leftHash.SequenceEqual(rightHash);
 }
 
-static void CopyRepoFileIfExists(string relativePath, string stage) {
+static void CopyRepoFileIfExists(string relativePath, string stage, string? targetFileName = null) {
     if (!File.Exists(relativePath)) {
         return;
     }
 
-    var target = Path.Combine(stage, relativePath);
+    var target = Path.Combine(stage, targetFileName ?? relativePath);
     var targetDirectory = Path.GetDirectoryName(target);
 
     if (!string.IsNullOrEmpty(targetDirectory)) {

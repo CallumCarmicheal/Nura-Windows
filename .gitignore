@@ -447,3 +447,6 @@ FodyWeavers.xsd
 *.msp
 
 README.md
+
+# Keep the checked-in architecture guide for the WPF client.
+!src/NuraDesktop/README.md
