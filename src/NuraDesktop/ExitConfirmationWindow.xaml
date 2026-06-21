@@ -1,0 +1,132 @@
+<Window x:Class="NuraDesktop.ExitConfirmationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Exit Nura"
+        Width="460"
+        MinHeight="340"
+        SizeToContent="Height"
+        Background="Transparent"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        KeyDown="Window_OnKeyDown">
+
+    <Window.Resources>
+        <Style x:Key="ExitConfirmationPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource AccentGradientBrush}" />
+            <Setter Property="BorderBrush" Value="#44FF8AE6" />
+            <Setter Property="MinWidth" Value="118" />
+            <Setter Property="Padding" Value="18,8" />
+        </Style>
+
+        <Style x:Key="ExitConfirmationSecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ValuePillButtonStyle}">
+            <Setter Property="MinWidth" Value="104" />
+            <Setter Property="Padding" Value="18,8" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Border Style="{StaticResource PopupShellStyle}">
+            <Grid>
+                <Border IsHitTestVisible="False">
+                    <Border.Background>
+                        <RadialGradientBrush Center="0.5,0.0"
+                                             GradientOrigin="0.5,0.0"
+                                             RadiusX="0.9"
+                                             RadiusY="0.72">
+                            <GradientStop Color="#34FF5AB2" Offset="0.0" />
+                            <GradientStop Color="#1DFF5AB2" Offset="0.26" />
+                            <GradientStop Color="#08FF5AB2" Offset="0.52" />
+                            <GradientStop Color="#00FF5AB2" Offset="0.78" />
+                        </RadialGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <Grid Margin="26">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Width="48"
+                                Height="48"
+                                CornerRadius="18"
+                                Background="#18FFFFFF"
+                                BorderBrush="#28FFFFFF"
+                                BorderThickness="1"
+                                VerticalAlignment="Top">
+                            <TextBlock Text="&#xE711;"
+                                       FontFamily="Segoe Fluent Icons"
+                                       Foreground="White"
+                                       FontSize="20"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+
+                        <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                            <TextBlock Text="Exit Nura"
+                                       Foreground="{StaticResource SubtleTextBrush}"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       TextOptions.TextFormattingMode="Display" />
+                            <TextBlock Text="Are you sure?"
+                                       Foreground="{StaticResource StrongTextBrush}"
+                                       FontSize="28"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Grid.Row="1"
+                            Style="{StaticResource CardBorderStyle}"
+                            Margin="0,24,0,22">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="This will close the desktop app and stop active device monitoring."
+                                       Foreground="{StaticResource StrongTextBrush}"
+                                       FontSize="15"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="Any in-progress device operations should finish or be cancelled during shutdown."
+                                       Foreground="{StaticResource SubtleTextBrush}"
+                                       FontSize="13"
+                                       TextWrapping="Wrap"
+                                       Margin="0,12,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Grid.Row="2"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right">
+                        <Button Style="{StaticResource ExitConfirmationSecondaryButtonStyle}"
+                                Click="NoButton_OnClick"
+                                IsCancel="True"
+                                Margin="0,0,10,0">
+                            <TextBlock Text="No"
+                                       Foreground="White"
+                                       FontSize="13"
+                                       FontWeight="SemiBold" />
+                        </Button>
+
+                        <Button Style="{StaticResource ExitConfirmationPrimaryButtonStyle}"
+                                Click="YesButton_OnClick"
+                                IsDefault="True">
+                            <TextBlock Text="Yes, exit"
+                                       Foreground="White"
+                                       FontSize="13"
+                                       FontWeight="SemiBold" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

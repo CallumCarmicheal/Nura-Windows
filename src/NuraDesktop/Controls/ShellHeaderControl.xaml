@@ -81,11 +81,13 @@
                     </TextBlock.Style>
                 </TextBlock>
             </Button>
-            <Button Style="{StaticResource IconChromeButtonStyle}">
+            <Button Style="{StaticResource IconChromeButtonStyle}"
+                    Click="ExitButton_OnClick"
+                    ToolTip="Exit Nura">
                 <TextBlock FontFamily="Segoe Fluent Icons"
                            FontSize="15"
                            Foreground="White"
-                           Text="&#xE13D;" />
+                           Text="&#xE711;" />
             </Button>
         </StackPanel>
     </Grid>

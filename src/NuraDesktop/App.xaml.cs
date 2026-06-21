@@ -1,6 +1,7 @@
 using NuraDesktop.Bootstrap;
 using NuraDesktop.Services;
 
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -8,6 +9,7 @@ namespace NuraDesktop;
 
 public partial class App : Application {
     private PopupAppContext? _context;
+    private bool _isShuttingDown;
 
     protected override async void OnStartup(StartupEventArgs e) {
         base.OnStartup(e);
@@ -44,6 +46,32 @@ public partial class App : Application {
         }
     }
 
+    public async Task ShutdownCleanlyAsync(int exitCode = 0) {
+        if (_isShuttingDown) {
+            return;
+        }
+
+        _isShuttingDown = true;
+
+        try {
+            await DisposeContextAsync();
+        } catch (Exception ex) {
+            Debug.WriteLine($"Clean shutdown disposal failed: {ex}");
+        } finally {
+            Shutdown(exitCode);
+        }
+    }
+
+    private async ValueTask DisposeContextAsync() {
+        var context = _context;
+        if (context is null) {
+            return;
+        }
+
+        _context = null;
+        await context.DisposeAsync();
+    }
+
     private static void ShowPreReleaseWarningIfNeeded(
         PopupAppStoragePaths storagePaths,
         Window owner) {
@@ -72,11 +100,7 @@ public partial class App : Application {
     }
 
     protected override async void OnExit(ExitEventArgs e) {
-        if (_context is not null) {
-            await _context.DisposeAsync();
-            _context = null;
-        }
-
+        await DisposeContextAsync();
         base.OnExit(e);
     }
 }
