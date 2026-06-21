@@ -254,7 +254,7 @@
                                 </Ellipse.Effect>
                             </Ellipse>
                             <Grid Margin="26">
-                                <Image Source="/NuraPopupWpf;component/Resources/Images/NuraphonesMinimalWhiteLogo.png"
+                                <Image Source="/Resources/Images/NuraphonesMinimalWhiteLogo.png"
                                        RenderOptions.BitmapScalingMode="HighQuality"
                                        RenderOptions.EdgeMode="Unspecified"
                                        SnapsToDevicePixels="False"

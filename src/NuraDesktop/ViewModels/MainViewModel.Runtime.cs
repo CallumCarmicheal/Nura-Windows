@@ -347,7 +347,7 @@ public sealed partial class MainViewModel {
         GlobalStatusTone = tone;
 
         if (changed) {
-            Debug.WriteLine($"[NuraPopupWpf.Status] system tone={tone} text={text.ReplaceLineEndings(" ")}");
+            Debug.WriteLine($"[NuraDesktop.Status] system tone={tone} text={text.ReplaceLineEndings(" ")}");
         }
 
     }

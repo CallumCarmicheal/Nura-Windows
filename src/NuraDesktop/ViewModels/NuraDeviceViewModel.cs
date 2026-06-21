@@ -1083,7 +1083,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
         _lastDebugStatusText = text;
         _lastDebugStatusTone = tone;
         Debug.WriteLine(
-            $"[NuraPopupWpf.Status] device id={Id} name={Name} operation={LiveDevice?.OperationStatus?.Kind.ToString() ?? "none"} stage={OperationStageCode.ReplaceLineEndings(" ")} tone={tone} text={text.ReplaceLineEndings(" ")}");
+            $"[NuraDesktop.Status] device id={Id} name={Name} operation={LiveDevice?.OperationStatus?.Kind.ToString() ?? "none"} stage={OperationStageCode.ReplaceLineEndings(" ")} tone={tone} text={text.ReplaceLineEndings(" ")}");
     }
 
     private static StatusTone GetStatusTone(NuraDeviceOperationStatus status) {
