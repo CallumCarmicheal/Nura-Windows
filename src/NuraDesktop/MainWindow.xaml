@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:NuraDesktop.Controls"
         mc:Ignorable="d"
-        Title="Nura Popup"
+        Title="Nura - Windows"
         Width="980"
         Height="80"
         Background="Transparent"

@@ -13,63 +13,68 @@ public partial class App : Application {
 
     protected override async void OnStartup(StartupEventArgs e) {
         base.OnStartup(e);
-        Thread.CurrentThread.Name = "NuraPopupWpf UI";
+
+        Thread.CurrentThread.Name = "Desktop UI";
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         StartupSplashWindow? splash = null;
 
         try {
-            ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
+            splash = new StartupSplashWindow {
+                ShowInTaskbar = false
+            };
 
-            splash = new StartupSplashWindow();
             splash.Show();
-            await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.Render);
+            await Dispatcher.Yield(DispatcherPriority.Render);
 
             var mode = PopupBootstrapperFactory.ParseMode(e.Args);
             var storagePaths = PopupAppStoragePaths.Create(mode);
 
             var bootstrapper = PopupBootstrapperFactory.Create(e.Args);
+
             splash.SetStatus(mode == PopupAppBootstrapMode.Live
                 ? "Starting Bluetooth services..."
                 : "Preparing demo devices...");
-            await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.Render);
+
+            await Dispatcher.Yield(DispatcherPriority.Render);
+
             _context = await bootstrapper.BootstrapAsync(e.Args);
-            splash.SetStatus("Opening Nura Desktop...");
 
-            var window = new MainWindow(_context.RootViewModel);
-            var closedDuringStartup = false;
-            window.Closed += (_, _) => closedDuringStartup = true;
-            MainWindow = window;
+            splash.SetStatus("Checking startup requirements...");
+            await Dispatcher.Yield(DispatcherPriority.Render);
 
-            window.Show();
-            splash.Close();
-            splash = null;
+            // Show startup gates before MainWindow exists.
+            // Either use splash as owner, or make these standalone startup dialogs.
+            ShowPreReleaseWarningIfNeeded(storagePaths, splash);
 
-            await Dispatcher.InvokeAsync(
-                () => {
-                    if (!closedDuringStartup) {
-                        ShowPreReleaseWarningIfNeeded(storagePaths, window);
-                    }
-                },
-                DispatcherPriority.ApplicationIdle);
-
-            if (closedDuringStartup) {
-                await ShutdownCleanlyAsync();
-                return;
-            }
-
-            ShutdownMode = System.Windows.ShutdownMode.OnLastWindowClose;
+            splash.SetStatus("Checking for updates...");
+            await Dispatcher.Yield(DispatcherPriority.Render);
 
             await _context.RootViewModel.CheckForUpdatesAsync(surfaceFailures: false);
-            if (!closedDuringStartup) {
-                ShowUpdateIfAvailable(_context.RootViewModel, window);
-            }
+            ShowUpdateIfAvailable(_context.RootViewModel, splash);
+
+            splash.SetStatus("Opening Nura Desktop...");
+            await Dispatcher.Yield(DispatcherPriority.Render);
+
+            var window = new MainWindow(_context.RootViewModel);
+            MainWindow = window;
+
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+
+            window.Show();
+            window.Activate();
+
+            splash.Close();
+            splash = null;
         } catch (Exception ex) {
             splash?.Close();
+
             MessageBox.Show(
                 $"Startup failed.\n\n{ex.Message}",
                 "Nura Popup",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+
             Shutdown(-1);
         }
     }
@@ -102,7 +107,8 @@ public partial class App : Application {
 
     private static void ShowPreReleaseWarningIfNeeded(
         PopupAppStoragePaths storagePaths,
-        Window owner) {
+        Window? owner = null) {
+
         var settingsStore = new AppSettingStore(storagePaths.AppSettingsPath);
         var settings = settingsStore.Load();
 
@@ -110,18 +116,22 @@ public partial class App : Application {
             return;
         }
 
-        if (!CanOwnDialog(owner)) {
-            return;
-        }
-
         var warningWindow = new PrereleaseWarningWindow {
-            Owner = owner,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            ShowInTaskbar = false
+            WindowStartupLocation = owner is not null
+                ? WindowStartupLocation.CenterOwner
+                : WindowStartupLocation.CenterScreen,
+
+            // If there is no owner, let it appear in taskbar so it cannot become
+            // an invisible modal blocker.
+            ShowInTaskbar = owner is null
         };
 
+        if (owner is not null && CanOwnDialog(owner)) {
+            warningWindow.Owner = owner;
+            warningWindow.ShowInTaskbar = false;
+        }
+
         warningWindow.ShowDialog();
-        warningWindow.Close();
 
         if (!warningWindow.DoNotShowAgain) {
             return;
