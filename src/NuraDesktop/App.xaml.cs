@@ -36,6 +36,8 @@ public partial class App : Application {
             splash.SetStatus("Opening Nura Desktop...");
 
             var window = new MainWindow(_context.RootViewModel);
+            var closedDuringStartup = false;
+            window.Closed += (_, _) => closedDuringStartup = true;
             MainWindow = window;
 
             window.Show();
@@ -43,15 +45,24 @@ public partial class App : Application {
             splash = null;
 
             await Dispatcher.InvokeAsync(
-                () => ShowPreReleaseWarningIfNeeded(storagePaths, window),
+                () => {
+                    if (!closedDuringStartup) {
+                        ShowPreReleaseWarningIfNeeded(storagePaths, window);
+                    }
+                },
                 DispatcherPriority.ApplicationIdle);
 
-            window.Show();
+            if (closedDuringStartup) {
+                await ShutdownCleanlyAsync();
+                return;
+            }
 
             ShutdownMode = System.Windows.ShutdownMode.OnLastWindowClose;
 
             await _context.RootViewModel.CheckForUpdatesAsync(surfaceFailures: false);
-            ShowUpdateIfAvailable(_context.RootViewModel, window);
+            if (!closedDuringStartup) {
+                ShowUpdateIfAvailable(_context.RootViewModel, window);
+            }
         } catch (Exception ex) {
             splash?.Close();
             MessageBox.Show(
@@ -99,6 +110,10 @@ public partial class App : Application {
             return;
         }
 
+        if (!CanOwnDialog(owner)) {
+            return;
+        }
+
         var warningWindow = new PrereleaseWarningWindow {
             Owner = owner,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -117,7 +132,7 @@ public partial class App : Application {
     }
 
     private static void ShowUpdateIfAvailable(NuraDesktop.ViewModels.MainViewModel viewModel, Window owner) {
-        if (!viewModel.ShouldShowStartupUpdatePrompt) {
+        if (!viewModel.ShouldShowStartupUpdatePrompt || !CanOwnDialog(owner)) {
             return;
         }
 
@@ -129,6 +144,12 @@ public partial class App : Application {
 
         updateWindow.ShowDialog();
     }
+
+    private static bool CanOwnDialog(Window owner) =>
+        owner.IsLoaded &&
+        owner.IsVisible &&
+        !owner.Dispatcher.HasShutdownStarted &&
+        !owner.Dispatcher.HasShutdownFinished;
 
     protected override async void OnExit(ExitEventArgs e) {
         await DisposeContextAsync();
