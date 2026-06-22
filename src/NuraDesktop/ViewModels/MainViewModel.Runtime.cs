@@ -139,6 +139,7 @@ public sealed partial class MainViewModel {
     public async ValueTask DisposeAsync() {
         CancelGlobalStatusReset();
         CancelScheduledImmersionApply();
+        _updates.PropertyChanged -= OnUpdateServicePropertyChanged;
         if (_client is not null) {
             DetachClientEvents();
         }

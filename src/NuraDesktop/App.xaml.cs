@@ -36,6 +36,9 @@ public partial class App : Application {
             window.Show();
 
             ShutdownMode = System.Windows.ShutdownMode.OnLastWindowClose;
+
+            await _context.RootViewModel.CheckForUpdatesAsync(surfaceFailures: false);
+            ShowUpdateIfAvailable(_context.RootViewModel, window);
         } catch (Exception ex) {
             MessageBox.Show(
                 $"Startup failed.\n\n{ex.Message}",
@@ -97,6 +100,20 @@ public partial class App : Application {
 
         settings.Preferences.DoNotShowPreReleaseWarning = true;
         settingsStore.Save(settings);
+    }
+
+    private static void ShowUpdateIfAvailable(NuraDesktop.ViewModels.MainViewModel viewModel, Window owner) {
+        if (!viewModel.ShouldShowStartupUpdatePrompt) {
+            return;
+        }
+
+        var updateWindow = new UpdateAvailableWindow(viewModel.Updates) {
+            Owner = owner,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ShowInTaskbar = false
+        };
+
+        updateWindow.ShowDialog();
     }
 
     protected override async void OnExit(ExitEventArgs e) {

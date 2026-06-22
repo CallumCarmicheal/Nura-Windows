@@ -44,6 +44,7 @@
 - Hearing-profile rendering with bitmap and retained-mode shape paths.
 - Transparent PNG export for available device/profile combinations.
 - Pending device controls: queued/applying changes update the UI immediately, then reconcile with confirmed headset state.
+- GitHub release update checks after startup, with manual checking, release notes, per-version skip, download progress, and automatic restart/install support.
 - Exit confirmation from the shell control, preventing accidental application closes.
 
 ## Build
@@ -61,5 +62,7 @@ dotnet run --project src/NuraDesktop/NuraDesktop.csproj
 ## Notes
 
 - The project targets `net10.0-windows`.
+- Published releases must keep `UpdateRunner.exe` beside `NuraDesktop.exe` and `NuraTerm.exe`; the updater copies it to the temporary update workspace before replacing the application files.
+- Skipped releases are stored under `%LOCALAPPDATA%\Nura-Windows\Updates` and remain available from Settings until update alerts are resumed.
 - Firmware/language transfer operations are intentionally not exposed in WPF.
 - New device controls should first be implemented and verified in `NuraLib`, then surfaced through capability-gated WPF commands.

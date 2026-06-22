@@ -14,6 +14,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\NuraLib\NuraLib.csproj" />
+		<ProjectReference Include="..\UpdateLib\UpdateLib.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -1,9 +1,13 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/NuraDesktop/NuraDesktop.csproj" />
+    <Project Path="src/NuraLib/NuraLib.csproj" />
     <Project Path="src/NuraTerm/NuraTerm.csproj" />
     <Project Path="src/NuraUtilityConsole/NuraUtilityConsole.csproj" />
-    <Project Path="src/NuraLib/NuraLib.csproj" />
-    <Project Path="src/NuraDesktop/NuraDesktop.csproj" />
+  </Folder>
+  <Folder Name="/src/updater/">
+    <Project Path="src/UpdateLib/UpdateLib.csproj" Id="4f8e02f3-9d13-4011-bef5-ffce16a7d48f" />
+    <Project Path="src/UpdateRunner/UpdateRunner.csproj" Id="6dc3f44a-26c1-4583-80f9-c65f4d5ea1f8" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/NuraLib.Tests/NuraLib.Tests.csproj" />

@@ -105,7 +105,7 @@ internal sealed class ProfileVisualisationTests {
 
     private static void ReferenceBitmap_UsesOpaqueTopOriginOutput() {
         var profile = CreateSyntheticProfile();
-        var bitmap = new NuraProfileBitmapRenderer().Render(profile, 64);
+        var bitmap = NuraProfileBitmapRenderer.Render(profile, 64);
 
         AssertTrue(bitmap.Pixels.Where((_, index) => (index & 3) == 3).All(alpha => alpha == byte.MaxValue), "Native bitmap output should be opaque.");
 
@@ -116,7 +116,7 @@ internal sealed class ProfileVisualisationTests {
 
     private static void ReferenceBitmap_OptInTransparency_UsesPremultipliedPixels() {
         var profile = CreateSyntheticProfile();
-        var bitmap = new NuraProfileBitmapRenderer().Render(profile, 64, useTransparency: true);
+        var bitmap = NuraProfileBitmapRenderer.Render(profile, 64, useTransparency: true);
 
         AssertTrue(bitmap.IsPremultiplied, "Transparent renderer output must be premultiplied BGRA.");
         AssertTrue(bitmap.Pixels.Where((_, index) => (index & 3) == 3).Any(alpha => alpha < byte.MaxValue), "Transparent output should contain non-opaque pixels.");
@@ -144,7 +144,7 @@ internal sealed class ProfileVisualisationTests {
         }
 
         var expected = LoadBgraPixels(fixturePath, 256);
-        var actual = new NuraProfileBitmapRenderer().Render(CreateSyntheticProfile(), 256).Pixels;
+        var actual = NuraProfileBitmapRenderer.Render(CreateSyntheticProfile(), 256).Pixels;
         long totalError = 0;
         var largeErrorPixels = 0;
 

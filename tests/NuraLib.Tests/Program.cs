@@ -19,6 +19,8 @@ var profileVisualisationTests = new ProfileVisualisationTests();
 profileVisualisationTests.RunAll();
 var profileVisualControlTests = new ProfileVisualControlTests();
 profileVisualControlTests.RunAll();
+var updateLibTests = new UpdateLibTests();
+updateLibTests.RunAll();
 Console.WriteLine("All NuraLib packet round-trip tests passed.");
 
 internal sealed class CommandRoundTripTests {

@@ -116,7 +116,7 @@ Confirmed important result:
 
 ### NuraDesktop
 
-`NuraDesktop` is the WPF GUI client. It supports demo and live startup modes, capability-aware controls, automatic setup for connected devices, battery display, hearing-profile rendering, and queued/applying feedback while device commands are in flight.
+`NuraDesktop` is the WPF GUI client. It supports demo and live startup modes, capability-aware controls, automatic setup for connected devices, battery display, hearing-profile rendering, queued/applying feedback while device commands are in flight, and GitHub release updates with per-version skip controls.
 
 For SDK usage details, read `docs/SDK-Guide.md`.
 
@@ -166,7 +166,7 @@ dotnet build .\src\NuraLib\NuraLib.csproj -v minimal
 
 ## Release Build
 
-The repository release script publishes `NuraTerm` and `NuraDesktop`, then produces both self-contained and framework-dependent Windows archives:
+The repository release script publishes `NuraTerm`, `NuraDesktop`, and `UpdateRunner`, then produces both self-contained and framework-dependent Windows archives. `UpdateRunner.exe` must remain beside the applications for in-place update installation:
 
 ```powershell
 dotnet run --file build.cs -- release --version 1.2.0

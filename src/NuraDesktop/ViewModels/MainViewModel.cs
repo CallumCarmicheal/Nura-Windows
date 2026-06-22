@@ -33,6 +33,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     private readonly List<string> _devicePriorityIds = new();
     private readonly Stopwatch _animationStopwatch = new();
     private readonly AppSettings _appSettings;
+    private readonly DesktopUpdateService _updates = new();
 
     private TimeSpan _animationDuration = TimeSpan.FromMilliseconds(420);
     private ProfileModel? _animationFromProfile;
@@ -76,6 +77,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         _appSettingsStore = new AppSettingStore(storagePaths.AppSettingsPath);
 
         _appSettings = _appSettingsStore.Load();
+        _updates.PropertyChanged += OnUpdateServicePropertyChanged;
         _windowAnchorOptions = new ObservableCollection<WindowAnchorOption>(BuildWindowAnchorOptions());
         _windowAnchorEdgeOptions = new ObservableCollection<WindowAnchorEdgeOption>(BuildWindowAnchorEdgeOptions());
         _rememberExpandTypeOptions = new ObservableCollection<RememberExpandTypeOption>(BuildRememberExpandTypeOptions());
@@ -132,6 +134,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
         ResetTouchButtonsCommand = new RelayCommand(_ => ResetTouchButtonDraft());
         ApplyDialCommand = new AsyncRelayCommand(async (_, _) => await ApplyDialAsync(), allowConcurrentExecutions: true);
         ResetDialCommand = new RelayCommand(_ => ResetDialDraft());
+        CheckForUpdatesCommand = new AsyncRelayCommand(async (_, cancellationToken) => await CheckForUpdatesAsync(cancellationToken));
+        UpdateNowCommand = new AsyncRelayCommand(async (_, cancellationToken) => await DownloadAndInstallUpdateAsync(cancellationToken));
+        ViewUpdateReleaseCommand = new RelayCommand(_ => _updates.OpenAvailableRelease());
+        ResumeUpdateAlertsCommand = new RelayCommand(_ => _updates.ResumeUpdateAlerts());
 
         InitializeRuntimeExtensions();
     }
@@ -177,6 +183,50 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     public ICommand ApplyDialCommand { get; }
 
     public ICommand ResetDialCommand { get; }
+
+    public ICommand CheckForUpdatesCommand { get; }
+
+    public ICommand UpdateNowCommand { get; }
+
+    public ICommand ViewUpdateReleaseCommand { get; }
+
+    public ICommand ResumeUpdateAlertsCommand { get; }
+
+    public DesktopUpdateService Updates => _updates;
+
+    public string AppVersionText => _updates.AppVersionText;
+
+    public string UpdateStatusText => _updates.StatusText;
+
+    public string UpdateErrorText => _updates.ErrorText;
+
+    public bool HasUpdateError => _updates.HasError;
+
+    public bool HasAvailableUpdate => _updates.HasAvailableUpdate;
+
+    public bool IsAvailableUpdateSkipped => _updates.IsAvailableUpdateSkipped;
+
+    public bool IsUpdateBusy => _updates.IsBusy;
+
+    public bool CanCheckForUpdates => _updates.CanCheckForUpdates;
+
+    public bool CanUpdateNow => _updates.CanUpdateNow;
+
+    public bool CanViewUpdateRelease => _updates.CanViewRelease;
+
+    public double UpdateProgressPercent => _updates.DownloadProgressPercent;
+
+    public string UpdateProgressText => _updates.DownloadProgressText;
+
+    public bool ShouldShowStartupUpdatePrompt => HasAvailableUpdate && !IsAvailableUpdateSkipped;
+
+    public Task CheckForUpdatesAsync(CancellationToken cancellationToken = default, bool surfaceFailures = true) =>
+        _updates.CheckAsync(cancellationToken, surfaceFailures);
+
+    public Task DownloadAndInstallUpdateAsync(CancellationToken cancellationToken = default) =>
+        _updates.DownloadAndInstallAsync(cancellationToken);
+
+    public void SkipAvailableUpdate() => _updates.SkipAvailableUpdate();
 
     public ICommand ToggleSerialVisibilityCommand { get; }
 
@@ -1151,5 +1201,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     }
 
     private static double Lerp(double a, double b, double t) => a + ((b - a) * t);
+
+    private void OnUpdateServicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) {
+        OnPropertyChanged(nameof(AppVersionText));
+        OnPropertyChanged(nameof(UpdateStatusText));
+        OnPropertyChanged(nameof(UpdateErrorText));
+        OnPropertyChanged(nameof(HasUpdateError));
+        OnPropertyChanged(nameof(HasAvailableUpdate));
+        OnPropertyChanged(nameof(IsAvailableUpdateSkipped));
+        OnPropertyChanged(nameof(IsUpdateBusy));
+        OnPropertyChanged(nameof(CanCheckForUpdates));
+        OnPropertyChanged(nameof(CanUpdateNow));
+        OnPropertyChanged(nameof(CanViewUpdateRelease));
+        OnPropertyChanged(nameof(UpdateProgressPercent));
+        OnPropertyChanged(nameof(UpdateProgressText));
+        OnPropertyChanged(nameof(ShouldShowStartupUpdatePrompt));
+    }
 
 }

@@ -88,7 +88,8 @@ static async Task CreateZipAsync(Options options, string version, bool selfConta
 
     var projects = new[] {
         new PublishProject("NuraTerm", "src/NuraTerm/NuraTerm.csproj"),
-        new PublishProject("NuraDesktop", "src/NuraDesktop/NuraDesktop.csproj")
+        new PublishProject("NuraDesktop", "src/NuraDesktop/NuraDesktop.csproj"),
+        new PublishProject("UpdateRunner", "src/UpdateRunner/UpdateRunner.csproj")
     };
 
     foreach (var project in projects) {
