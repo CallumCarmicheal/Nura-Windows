@@ -15,7 +15,6 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
     private const int DefaultProfileSlotCount = 3;
 
     private readonly IReadOnlyList<ProfileModel> _fallbackProfiles;
-    private readonly NuraProfileBitmapRenderer _renderer = new();
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly Dictionary<PendingChangeKind, PendingChange> _pendingChanges = [];
     private long _nextPendingGeneration;
@@ -1136,7 +1135,7 @@ public sealed class NuraDeviceViewModel : DeviceModel, IAsyncDisposable {
             var profile = visualisation is { Valid: true }
                 ? new ProfileModel(name, visualisation)
                 : GetFallbackProfile(name, profileId);
-            profile.RenderThumbnail(_renderer);
+            profile.RenderThumbnail();
             profiles.Add(profile);
         }
 

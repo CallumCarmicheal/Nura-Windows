@@ -12,8 +12,6 @@ namespace NuraDesktop.Controls;
 /// Renders a hearing profile with either the native-reference bitmap path or retained WPF contours.
 /// </summary>
 public sealed class ProfileVisualControl : FrameworkElement {
-    private static readonly NuraProfileBitmapRenderer BitmapRenderer = new();
-
     public static readonly DependencyProperty FromProfileProperty =
         DependencyProperty.Register(
             nameof(FromProfile),
@@ -148,7 +146,7 @@ public sealed class ProfileVisualControl : FrameworkElement {
             return _bitmapState.Bitmap;
         }
 
-        var rawBitmap = BitmapRenderer.Render(
+        var rawBitmap = NuraProfileBitmapRenderer.Render(
             toProfile.VisualisationData,
             fromProfile.VisualisationData,
             blend,

@@ -24,7 +24,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
     private const int MaxExportRenderSize = 12288;
     private const string EmptyDeviceId = "__empty__";
 
-    private readonly NuraProfileBitmapRenderer _renderer = new();
     private readonly HearingProfileExportService _profileExportService = new();
     private readonly AppSettingStore _appSettingsStore;
     private readonly ObservableCollection<string> _modes = new ObservableCollection<string>(new[] { "Neutral", "Personalised" });
@@ -85,7 +84,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
 
         // Re-render the thumbnails
         foreach (var profile in Profiles.Values) 
-            profile.RenderThumbnail(_renderer);
+            profile.RenderThumbnail();
 
         InitializeEmptyCurrentSelection();
         _selectedWindowAnchorOption = _windowAnchorOptions.FirstOrDefault(option => option.Mode == _appSettings.Preferences.AnchorMode) ?? _windowAnchorOptions[0];

@@ -14,7 +14,6 @@ public sealed class HearingProfileExportService {
     private const int MinRenderSize = 4;
     private const int MaxRenderSize = 12288;
 
-    private readonly NuraProfileBitmapRenderer _bitmapRenderer = new();
 
     public string ExportProfiles(IEnumerable<DeviceModel> devices, int requestedSize, bool useBitmapRenderer) {
         var renderSize = Math.Clamp(requestedSize, MinRenderSize, MaxRenderSize);
@@ -31,7 +30,7 @@ public sealed class HearingProfileExportService {
                     BitmapSource bitmap = null!;
 
                     if (useBitmapRenderer) {
-                        bitmap = _bitmapRenderer.Render(profile.VisualisationData, 1.0, renderSize, useTransparency: transparent).ToBitmapSource();
+                        bitmap = NuraProfileBitmapRenderer.Render(profile.VisualisationData, 1.0, renderSize, useTransparency: transparent).ToBitmapSource();
                     } else {
                         bitmap = RenderShapeBitmap(profile, renderSize, transparent);
                     }

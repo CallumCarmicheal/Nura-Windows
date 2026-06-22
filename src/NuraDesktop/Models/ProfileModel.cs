@@ -25,12 +25,12 @@ public sealed class ProfileModel {
         VisualisationData = visualisationData;
     }
 
-    public void RenderThumbnail(NuraProfileBitmapRenderer renderer, bool onlyRenderIfNull = true) {
+    public void RenderThumbnail(bool onlyRenderIfNull = true) {
         // Skip rendering the thumbnail again if not required
         if (onlyRenderIfNull && Thumbnail != null)
             return;
 
-        Thumbnail = renderer.Render(VisualisationData, 48, useTransparency: true).ToBitmapSource();
+        Thumbnail = NuraProfileBitmapRenderer.Render(VisualisationData, 48, useTransparency: true).ToBitmapSource();
     }
 
     public override string ToString() => Name;

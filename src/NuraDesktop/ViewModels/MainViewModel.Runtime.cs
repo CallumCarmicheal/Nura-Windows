@@ -159,7 +159,7 @@ public sealed partial class MainViewModel {
         _devicePriorityIds.Clear();
 
         foreach (var profile in seedData.Profiles.Values) {
-            profile.RenderThumbnail(_renderer);
+            profile.RenderThumbnail();
         }
 
         foreach (var device in seedData.Devices) {
@@ -435,7 +435,7 @@ public sealed partial class MainViewModel {
 
     private void RenderProfileThumbnails(IEnumerable<ProfileModel> profiles) {
         foreach (var profile in profiles) {
-            profile.RenderThumbnail(_renderer);
+            profile.RenderThumbnail();
         }
     }
 

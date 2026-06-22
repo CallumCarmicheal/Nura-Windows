@@ -14,19 +14,19 @@ public sealed record class NuraProfileBitmap(int Width, int Height, byte[] Pixel
 /// <summary>
 /// CPU implementation of the Android static profile visualisation renderer.
 /// </summary>
-public class NuraProfileBitmapRenderer {
+public static class NuraProfileBitmapRenderer {
     private const double TwoPi = Math.PI * 2.0;
     private const double EdgeSoftness = 0.005;
     private static readonly NuraProfileReferenceRgb NeutralCircleColour = new(0.31, 0.38, 0.47);
 
-    public NuraProfileBitmap Render(
+    public static NuraProfileBitmap Render(
         NuraProfileVisualisationData profile,
         double personalisationProgress,
         int size,
         bool useTransparency = false
     ) => Render(profile, profile, 1.0, personalisationProgress, size, useTransparency);
 
-    public NuraProfileBitmap Render(
+    public static NuraProfileBitmap Render(
         NuraProfileVisualisationData targetProfile,
         NuraProfileVisualisationData fromProfile,
         double profileBlendProgress,
@@ -94,7 +94,7 @@ public class NuraProfileBitmapRenderer {
     /// <summary>
     /// Renders the static profile image
     /// </summary>
-    public NuraProfileBitmap Render(
+    public static NuraProfileBitmap Render(
         NuraProfileVisualisationData profile,
         int size,
         bool useTransparency = false
