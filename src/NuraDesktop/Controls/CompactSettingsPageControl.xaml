@@ -86,14 +86,10 @@
 
                 <TextBlock Text="APP" Style="{StaticResource SectionTitleStyle}" Margin="0,12,0,0" />
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,12,0,0">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
+                    <StackPanel>
                         <TextBlock Text="Desktop app version" Foreground="{StaticResource SubtleTextBrush}" FontSize="13" />
-                        <TextBlock Grid.Column="1" Text="{Binding AppVersionText}" Foreground="White" HorizontalAlignment="Right" />
-                    </Grid>
+                        <TextBlock d:Text="vN.N.N.N-Githash" Text="{Binding AppVersionText}" Foreground="White" FontSize="13" />
+                    </StackPanel>
                 </Border>
                 <Border Style="{StaticResource InfoChipBorderStyle}" Margin="0,10,0,0">
                     <StackPanel>

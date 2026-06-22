@@ -6,7 +6,8 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 
-		<ApplicationIcon>Resources\Icon.ico</ApplicationIcon>
+		<ApplicationIcon>..\..\resources\icons\color\ico\Nuraphones_color_white_outline_02-soft.ico</ApplicationIcon>
+
 
 		<Version>1.2.1</Version>
 		<AssemblyVersion>1.2.1.0</AssemblyVersion>

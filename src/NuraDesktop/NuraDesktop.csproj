@@ -7,7 +7,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<LangVersion>latest</LangVersion>
 
-		<ApplicationIcon>Resources\Images\Icon.ico</ApplicationIcon>
+		<ApplicationIcon>..\..\resources\icons\normal\ico\Nuraphones_vector_white_outline_02-soft.ico</ApplicationIcon>
 
 		<Version>1.2.1</Version>
 		<AssemblyVersion>1.2.1.0</AssemblyVersion>

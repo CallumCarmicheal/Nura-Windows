@@ -1,0 +1,43 @@
+{
+  "description": "Multi-size Windows ICO variants generated from uploaded Nuraphones SVGs with progressively stronger soft white outlines.",
+  "icon_sizes": [
+    256,
+    128,
+    96,
+    64,
+    48,
+    32,
+    24,
+    16
+  ],
+  "variants": [
+    {
+      "label": "01-extra-soft",
+      "outline_width_px_at_256": 2.0,
+      "white_opacity": 0.24,
+      "soft_blur_px_at_256": 0.55
+    },
+    {
+      "label": "02-soft",
+      "outline_width_px_at_256": 3.0,
+      "white_opacity": 0.34,
+      "soft_blur_px_at_256": 0.55
+    },
+    {
+      "label": "03-medium",
+      "outline_width_px_at_256": 4.2,
+      "white_opacity": 0.46,
+      "soft_blur_px_at_256": 0.45
+    },
+    {
+      "label": "04-stronger",
+      "outline_width_px_at_256": 5.5,
+      "white_opacity": 0.58,
+      "soft_blur_px_at_256": 0.35
+    }
+  ],
+  "sources": {
+    "color": "/mnt/data/NuraphonesColorVector(1).svg",
+    "vector": "/mnt/data/NuraphonesVector(1).svg"
+  }
+}
