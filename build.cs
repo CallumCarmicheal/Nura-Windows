@@ -105,7 +105,9 @@ static async Task CreateZipAsync(Options options, string version, bool selfConta
             "-p:EnableWindowsTargeting=true",
             "-p:DebugType=None",
             "-p:DebugSymbols=false",
-            "-p:UseAppHost=true"
+            "-p:UseAppHost=true",
+            $"-p:Version={version}",
+            $"-p:InformationalVersion={version}"
         };
 
         await RunAsync("dotnet", publishArgs);

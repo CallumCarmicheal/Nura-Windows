@@ -2,7 +2,10 @@
 
 namespace UpdateRunner;
 
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 
 internal static class Program {
     private static int Main(string[] args) {
