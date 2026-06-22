@@ -632,7 +632,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable {
 
     public string DisconnectedDevicePreviewButtonText => ShowDisconnectedDeviceProfilePreview
         ? "Show disconnected artwork"
-        : "Preview hearing profile";
+        : "Show sample hearing profile";
 
     public string DisplaySerial {
         get {

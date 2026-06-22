@@ -667,6 +667,12 @@ static class Program {
                 await RefreshSelectedDeviceAsync(cancellationToken).ConfigureAwait(false);
                 return;
 
+            case ConsoleKey.K:
+                await ProvisionSelectedDeviceAsync(
+                    forceProvision: (key.Modifiers & ConsoleModifiers.Shift) != 0,
+                    cancellationToken).ConfigureAwait(false);
+                return;
+
             case ConsoleKey.T:
                 ToggleNuraDebugMessages();
                 return;
@@ -873,6 +879,63 @@ static class Program {
                         AnsiPart.Success(": refreshed.")));
             },
             cancellationToken);
+    }
+
+    private static async Task ProvisionSelectedDeviceAsync(bool forceProvision, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var device = GetSelectedConnectedDevice();
+        if (device is null) {
+            FlashSelectedDeviceStatusText(AnsiPart.Warning("No connected device selected."));
+            return;
+        }
+
+        if (!IsAuthenticated) {
+            FlashSelectedDeviceStatusText(
+                AnsiLine.From(
+                    NuraGradient.Text(device.Info.DisplayName),
+                    AnsiPart.Warning(": sign in to provision this device.")));
+            return;
+        }
+
+        if (!forceProvision && !device.ProvisioningRequired) {
+            FlashSelectedDeviceStatusText(
+                AnsiLine.From(
+                    NuraGradient.Text(device.Info.DisplayName),
+                    AnsiPart.Success(": provisioning already satisfied.")));
+            return;
+        }
+
+        try {
+            FlashSelectedDeviceStatusText(
+                AnsiLine.From(
+                    NuraGradient.Text(device.Info.DisplayName),
+                    AnsiPart.Dim(forceProvision ? ": force provisioning..." : ": provisioning...")));
+
+            var result = await device.EnsureProvisionedAsync(forceProvision, cancellationToken).ConfigureAwait(false);
+            if (!result.Success) {
+                FlashSelectedDeviceStatusText(
+                    AnsiLine.From(
+                        NuraGradient.Text(device.Info.DisplayName),
+                        AnsiPart.Error($": provisioning failed ({result.Error}).")));
+                return;
+            }
+
+            SelectedDevice = device;
+            UpdateSelectedDeviceText();
+            FlashSelectedDeviceStatusText(
+                AnsiLine.From(
+                    NuraGradient.Text(device.Info.DisplayName),
+                    AnsiPart.Success(": provisioned.")));
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (Exception ex) {
+            logger.WriteLine(
+                AnsiPart.Dim($"[{DateTime.Now:HH:mm:ss}] "),
+                AnsiPart.Error("[NuraApp] "),
+                $"Provisioning failed for {device.Info.DisplayName}: {ex.Message}");
+            FlashSelectedDeviceStatusText(AnsiLine.From(AnsiPart.Error("Provisioning failed: "), ex.Message));
+        }
     }
 
     private static Task RefreshSelectedBatteryAsync(CancellationToken cancellationToken) {
@@ -1135,9 +1198,6 @@ static class Program {
             logger.WriteLine("  TAB render available profile visualisations");
         }
 
-        if (device?.Info.Supports(NuraAudioCapabilities.VisualisationData) == true)
-            logger.WriteLine("  TAB render available profile visualisations");
-
         if (device?.Info.Supports(NuraAudioCapabilities.AncLevel) == true)              logger.WriteLine("  [ / ] adjust ANC level");
         if (device?.Info.Supports(NuraAudioCapabilities.GlobalAncToggle) == true)       logger.WriteLine("  g toggle global ANC");
         if (device?.Info.Supports(NuraAudioCapabilities.PersonalisedMode) == true)      logger.WriteLine("  n toggle personalised/neutral");
@@ -1145,6 +1205,7 @@ static class Program {
         if (device?.Info.Supports(NuraInteractionCapabilities.VoicePromptGain) == true) logger.WriteLine("  v cycle voice prompt gain");
         if (device?.Info.Supports(NuraSystemCapabilities.Profiles) == true)             logger.WriteLine("  1/2/3 select profile slot");
         
+        if (device is not null) logger.WriteLine("  k provision selected device (Shift+k forces a refresh)");
         logger.WriteLine("  b refresh battery");
         logger.WriteLine("  r refresh selected device");
         logger.WriteLine("  t toggle Nura debug/trace logging");
@@ -1262,6 +1323,10 @@ static class Program {
 
         if (selectedDevice.Info.Supports(NuraInteractionCapabilities.VoicePromptGain)) {
             parts.Add("v voice");
+        }
+
+        if (selectedDevice is ConnectedNuraDevice { ProvisioningRequired: true }) {
+            parts.Add("k provision");
         }
 
         parts.Add("b battery");

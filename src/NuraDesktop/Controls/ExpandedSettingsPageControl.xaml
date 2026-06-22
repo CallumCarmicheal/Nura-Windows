@@ -112,7 +112,7 @@
                         <TextBlock Text="{Binding UpdateErrorText}" Foreground="#FFFF9EA8" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
                                    Visibility="{Binding HasUpdateError, Converter={StaticResource BoolToVisibilityConverter}}" />
                         <StackPanel Margin="0,8,0,0" Visibility="{Binding IsUpdateBusy, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateProgressPercent}" Height="6" />
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateProgressPercent, Mode=OneWay}" Height="6" />
                             <TextBlock Text="{Binding UpdateProgressText}" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" Margin="0,6,0,0" />
                         </StackPanel>
                         <WrapPanel Margin="0,10,0,0">

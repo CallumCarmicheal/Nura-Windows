@@ -15,19 +15,32 @@ public partial class App : Application {
         base.OnStartup(e);
         Thread.CurrentThread.Name = "NuraPopupWpf UI";
 
+        StartupSplashWindow? splash = null;
+
         try {
             ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
+
+            splash = new StartupSplashWindow();
+            splash.Show();
+            await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.Render);
 
             var mode = PopupBootstrapperFactory.ParseMode(e.Args);
             var storagePaths = PopupAppStoragePaths.Create(mode);
 
             var bootstrapper = PopupBootstrapperFactory.Create(e.Args);
+            splash.SetStatus(mode == PopupAppBootstrapMode.Live
+                ? "Starting Bluetooth services..."
+                : "Preparing demo devices...");
+            await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.Render);
             _context = await bootstrapper.BootstrapAsync(e.Args);
+            splash.SetStatus("Opening Nura Desktop...");
 
             var window = new MainWindow(_context.RootViewModel);
             MainWindow = window;
 
             window.Show();
+            splash.Close();
+            splash = null;
 
             await Dispatcher.InvokeAsync(
                 () => ShowPreReleaseWarningIfNeeded(storagePaths, window),
@@ -40,6 +53,7 @@ public partial class App : Application {
             await _context.RootViewModel.CheckForUpdatesAsync(surfaceFailures: false);
             ShowUpdateIfAvailable(_context.RootViewModel, window);
         } catch (Exception ex) {
+            splash?.Close();
             MessageBox.Show(
                 $"Startup failed.\n\n{ex.Message}",
                 "Nura Popup",

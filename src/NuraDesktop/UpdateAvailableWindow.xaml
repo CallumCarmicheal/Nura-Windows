@@ -116,7 +116,7 @@
                             <StackPanel Margin="0,16,0,0"
                                         Visibility="{Binding IsUpdateBusy, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <ProgressBar Minimum="0" Maximum="100"
-                                             Value="{Binding UpdateProgressPercent}"
+                                             Value="{Binding UpdateProgressPercent, Mode=OneWay}"
                                              Height="7" />
                                 <TextBlock Text="{Binding UpdateProgressText}"
                                            Foreground="{StaticResource SubtleTextBrush}"

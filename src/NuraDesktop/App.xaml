@@ -4,6 +4,7 @@
              xmlns:infra="clr-namespace:NuraDesktop.Infrastructure"
              xmlns:controls="clr-namespace:NuraDesktop.Controls">
     <Application.Resources>
+        
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <infra:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
         <infra:SliderValueToOffsetConverter x:Key="SliderValueToOffsetConverter" />

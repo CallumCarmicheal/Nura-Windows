@@ -6,6 +6,14 @@
              xmlns:local="clr-namespace:NuraDesktop.Controls"
              xmlns:models="clr-namespace:NuraDesktop.Models"
              mc:Ignorable="d">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Resources/Images/NuraphonesVectors.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
     <StackPanel>
         <Border Style="{StaticResource CardBorderStyle}" MinHeight="560">
             <Grid>
@@ -254,11 +262,7 @@
                                 </Ellipse.Effect>
                             </Ellipse>
                             <Grid Margin="26">
-                                <Image Source="/Resources/Images/NuraphonesMinimalWhiteLogo.png"
-                                       RenderOptions.BitmapScalingMode="HighQuality"
-                                       RenderOptions.EdgeMode="Unspecified"
-                                       SnapsToDevicePixels="False"
-                                       UseLayoutRounding="False"
+                                <Image Source="{StaticResource NuraphonesVectorImage}"
                                        Stretch="Uniform"
                                        Opacity="1" />
                             </Grid>
